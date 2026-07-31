@@ -2,10 +2,11 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
 
-const isGitHubPagesBuild = process.env.GITHUB_ACTIONS === 'true';
+const isCapacitorBuild = process.env.CAPACITOR_BUILD === 'true';
+const isGitHubPagesBuild = process.env.GITHUB_ACTIONS === 'true' && !isCapacitorBuild;
 
 export default defineConfig({
-  base: isGitHubPagesBuild ? '/lingua-production/' : '/',
+  base: isCapacitorBuild ? './' : isGitHubPagesBuild ? '/lingua-production/' : '/',
   plugins: [react()],
   resolve: {
     alias: {
