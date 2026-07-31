@@ -120,10 +120,10 @@ export async function startSupabaseDataSync(): Promise<() => void> {
   let lastSnapshot = stableSnapshot();
   let isSyncing = false;
 
-  const syncIfChanged = async () => {
-    if (isSyncing || document.visibilityState === 'hidden') return;
+  const syncIfChanged = async (force = false) => {
+    if (isSyncing) return;
     const current = stableSnapshot();
-    if (current === lastSnapshot) return;
+    if (!force && current === lastSnapshot) return;
 
     isSyncing = true;
     try {
@@ -133,17 +133,24 @@ export async function startSupabaseDataSync(): Promise<() => void> {
     }
   };
 
-  // İlk cihazdaki mevcut veriyi de hesapla ilişkilendir.
-  if (!(await requestCloudState())) {
-    await uploadCloudState();
-    lastSnapshot = stableSnapshot();
+  const cloud = await requestCloudState();
+  if (!cloud) {
+    const uploaded = await uploadCloudState();
+    if (uploaded) lastSnapshot = stableSnapshot();
   }
 
-  const intervalId = window.setInterval(syncIfChanged, 5000);
+  // Uygulama giriş ekranından açılmışsa oturum sonradan kurulabilir.
+  // İlk birkaç tur zorunlu denenerek mevcut yerel veri hesaba bağlanır.
+  let warmupAttempts = 0;
+  const intervalId = window.setInterval(() => {
+    warmupAttempts += 1;
+    void syncIfChanged(warmupAttempts <= 6);
+  }, 5000);
+
   const onVisibility = () => {
-    if (document.visibilityState === 'hidden') void syncIfChanged();
+    if (document.visibilityState === 'hidden') void syncIfChanged(true);
   };
-  const onBeforeUnload = () => void syncIfChanged();
+  const onBeforeUnload = () => void syncIfChanged(true);
 
   document.addEventListener('visibilitychange', onVisibility);
   window.addEventListener('beforeunload', onBeforeUnload);
