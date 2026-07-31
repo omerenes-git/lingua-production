@@ -34,7 +34,7 @@ const requiredFiles = [
   'src/lib/supabaseWeb.ts',
   'src/lib/supabaseDataSync.ts',
   'src/components/SupabaseAuthGate.tsx',
-  'public/manifest.webmanifest',
+  'public/manifest.json',
   'public/service-worker.js',
   'supabase/functions/lingua-web-api/index.ts',
 ];
@@ -48,7 +48,7 @@ const [main, apiClient, supabaseWeb, edgeFunction, manifest, packageJson] = awai
   read('src/lib/linguaApi.ts'),
   read('src/lib/supabaseWeb.ts'),
   read('supabase/functions/lingua-web-api/index.ts'),
-  read('public/manifest.webmanifest'),
+  read('public/manifest.json'),
   read('package.json'),
 ]);
 
