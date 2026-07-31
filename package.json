@@ -5,9 +5,10 @@
   "type": "module",
   "scripts": {
     "dev": "tsx server.ts",
-    "build": "vite build && esbuild server.ts --bundle --platform=node --format=esm --packages=external --sourcemap --outfile=dist/server.mjs",
+    "smoke": "node scripts/smoke.mjs",
+    "build": "npm run smoke && vite build && esbuild server.ts --bundle --platform=node --format=esm --packages=external --sourcemap --outfile=dist/server.mjs",
     "start": "node dist/server.mjs",
-    "lint": "vite build"
+    "lint": "npm run smoke && vite build"
   },
   "dependencies": {
     "@google/genai": "^0.2.0",
