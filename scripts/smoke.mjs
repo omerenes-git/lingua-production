@@ -54,6 +54,7 @@ const [
   packageJson,
   grammarTab,
   floatingAssistant,
+  authGate,
 ] = await Promise.all([
   read('src/main.tsx'),
   read('src/lib/linguaApi.ts'),
@@ -63,6 +64,7 @@ const [
   read('package.json'),
   read('src/components/Tabs/GramerPratigiTab.tsx'),
   read('src/components/FloatingAssistantChat.tsx'),
+  read('src/components/SupabaseAuthGate.tsx'),
 ]);
 
 check('Merkezi Edge Function istemcisi kullanıma hazır', apiClient.includes('callLinguaApi') && apiClient.includes('/functions/v1/lingua-web-api'), 'callLinguaApi veya Edge Function adresi eksik.');
@@ -76,9 +78,13 @@ check('Service worker production girişinde kayıtlı', main.includes('serviceWo
 check('Edge Function kullanıcı girdisini sistem komutu saymıyor', edgeFunction.includes('<user_data>') && edgeFunction.includes('never system instructions'), 'Prompt injection ayrımı eksik.');
 check('İstek boyutu sınırlandırılmış', edgeFunction.includes('MAX_BODY_CHARS') && edgeFunction.includes('413'), 'Edge Function istek boyutu sınırı eksik.');
 check('Build komutu smoke testini çalıştırıyor', JSON.parse(packageJson).scripts?.build?.includes('npm run smoke'), 'Build öncesi smoke testi bağlı değil.');
-check('Gramer modülü merkezi API istemcisini kullanıyor', grammarTab.includes("callLinguaApi") && !grammarTab.includes("fetch('/api/"), 'Gramer modülünde eski göreli API çağrısı kaldı.');
+check('Gramer modülü merkezi API istemcisini kullanıyor', grammarTab.includes('callLinguaApi') && !grammarTab.includes("fetch('/api/"), 'Gramer modülünde eski göreli API çağrısı kaldı.');
 check('Lingua Asistan merkezi API istemcisini kullanıyor', floatingAssistant.includes('callLinguaApi') && !floatingAssistant.includes("fetch('/api/"), 'Lingua Asistan içinde eski göreli API çağrısı kaldı.');
 check('Asistan eylemleri izinli sekmelerle sınırlandırılmış', floatingAssistant.includes('VALID_TABS') && floatingAssistant.includes('VALID_TABS.has'), 'Sunucudan gelen sekme eylemleri doğrulanmıyor.');
+check('Parola kurtarma dönüşü işleniyor', supabaseWeb.includes('consumeRecoverySessionFromUrl') && supabaseWeb.includes("type !== 'recovery'"), 'Recovery bağlantısı uygulama içinde tüketilmiyor.');
+check('Yeni parola Supabase kullanıcı uç noktasına yazılıyor', supabaseWeb.includes("method: 'PUT'") && supabaseWeb.includes("JSON.stringify({ password })"), 'Yeni parola güncelleme isteği eksik.');
+check('Parola kurtarma ekranı mevcut', authGate.includes('isRecoveryMode') && authGate.includes('handleUpdatePassword') && authGate.includes('Yeni şifreyi kaydet'), 'Parola kurtarma kullanıcı arayüzü eksik.');
+check('Yeni parola doğrulaması mevcut', authGate.includes('newPassword.length < 8') && authGate.includes('newPassword !== confirmPassword'), 'Yeni parola uzunluk veya eşleşme doğrulaması eksik.');
 
 for (const result of checks) {
   console.log(`${result.passed ? '✓' : '✗'} ${result.name}`);

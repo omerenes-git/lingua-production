@@ -21,6 +21,8 @@ interface AuthResponse {
   expires_in?: number;
   expires_at?: number;
   user?: { id?: string; email?: string };
+  id?: string;
+  email?: string;
   error?: string;
   error_description?: string;
   msg?: string;
@@ -81,6 +83,116 @@ function storeSession(session: WebSession): void {
 
 function providerError(data: AuthResponse, fallback: string): string {
   return data.error_description || data.msg || data.message || data.error || fallback;
+}
+
+function notifyAuthRequired(): void {
+  if (typeof window !== 'undefined') window.dispatchEvent(new Event(AUTH_REQUIRED_EVENT));
+}
+
+function cleanRecoveryUrl(): void {
+  if (typeof window === 'undefined') return;
+  const cleanUrl = `${window.location.pathname}${window.location.search}`;
+  window.history.replaceState({}, document.title, cleanUrl);
+}
+
+async function fetchUser(
+  accessToken: string,
+  fetchImpl: FetchImplementation,
+): Promise<{ id: string; email?: string } | null> {
+  try {
+    const response = await fetchImpl(`${SUPABASE_URL}/auth/v1/user`, {
+      headers: {
+        ...authHeaders(),
+        Authorization: `Bearer ${accessToken}`,
+      },
+    });
+    if (!response.ok) return null;
+    const data = (await response.json()) as AuthResponse;
+    if (!data.id) return null;
+    return { id: data.id, ...(data.email ? { email: data.email } : {}) };
+  } catch {
+    return null;
+  }
+}
+
+export async function consumeRecoverySessionFromUrl(
+  fetchImpl: FetchImplementation = globalThis.fetch,
+): Promise<{ session: WebSession | null; isRecovery: boolean; error: string | null }> {
+  if (typeof window === 'undefined') return { session: null, isRecovery: false, error: null };
+
+  const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+  const queryParams = new URLSearchParams(window.location.search);
+  const type = hashParams.get('type') || queryParams.get('type');
+  const accessToken = hashParams.get('access_token') || queryParams.get('access_token');
+  const refreshToken = hashParams.get('refresh_token') || queryParams.get('refresh_token');
+  const errorDescription =
+    hashParams.get('error_description') ||
+    queryParams.get('error_description') ||
+    hashParams.get('error') ||
+    queryParams.get('error');
+
+  if (type !== 'recovery' && !accessToken) return { session: null, isRecovery: false, error: null };
+
+  if (errorDescription) {
+    cleanRecoveryUrl();
+    return { session: null, isRecovery: true, error: decodeURIComponent(errorDescription) };
+  }
+
+  if (!accessToken || !refreshToken) {
+    cleanRecoveryUrl();
+    return {
+      session: null,
+      isRecovery: true,
+      error: 'Parola sıfırlama bağlantısındaki oturum bilgisi eksik veya süresi dolmuş.',
+    };
+  }
+
+  const user = await fetchUser(accessToken, fetchImpl);
+  if (!user) {
+    cleanRecoveryUrl();
+    return {
+      session: null,
+      isRecovery: true,
+      error: 'Parola sıfırlama oturumu doğrulanamadı. Yeni bir bağlantı isteyin.',
+    };
+  }
+
+  const expiresIn = Number(hashParams.get('expires_in') || queryParams.get('expires_in') || 3600);
+  const session: WebSession = {
+    access_token: accessToken,
+    refresh_token: refreshToken,
+    token_type: hashParams.get('token_type') || queryParams.get('token_type') || 'bearer',
+    expires_at: Math.floor(Date.now() / 1000) + (Number.isFinite(expiresIn) ? expiresIn : 3600),
+    user,
+  };
+
+  storeSession(session);
+  cleanRecoveryUrl();
+  return { session, isRecovery: true, error: null };
+}
+
+export async function updatePassword(
+  password: string,
+  session: WebSession,
+  fetchImpl: FetchImplementation = globalThis.fetch,
+): Promise<{ error: string | null }> {
+  if (password.length < 8) return { error: 'Yeni şifre en az 8 karakter olmalı.' };
+
+  try {
+    const response = await fetchImpl(`${SUPABASE_URL}/auth/v1/user`, {
+      method: 'PUT',
+      headers: {
+        ...authHeaders(),
+        Authorization: `Bearer ${session.access_token}`,
+      },
+      body: JSON.stringify({ password }),
+    });
+    const data = (await response.json().catch(() => ({}))) as AuthResponse;
+    if (!response.ok) return { error: providerError(data, 'Yeni şifre kaydedilemedi.') };
+    return { error: null };
+  } catch {
+    return { error: 'Şifre güncelleme servisine ulaşılamadı.' };
+  }
 }
 
 export async function signInWithPassword(
@@ -189,10 +301,6 @@ export function clearSession(): void {
   localStorage.removeItem(SESSION_STORAGE_KEY);
 }
 
-function notifyAuthRequired(): void {
-  if (typeof window !== 'undefined') window.dispatchEvent(new Event(AUTH_REQUIRED_EVENT));
-}
-
 export async function signOut(
   fetchImpl: FetchImplementation = globalThis.fetch,
 ): Promise<void> {
@@ -225,9 +333,7 @@ function legacyApiPath(input: RequestInfo | URL): string | null {
 
   try {
     const url = new URL(raw, window.location.origin);
-    if (url.origin === window.location.origin && url.pathname.startsWith('/api/')) {
-      return url.pathname;
-    }
+    if (url.origin === window.location.origin && url.pathname.startsWith('/api/')) return url.pathname;
   } catch {
     return null;
   }
