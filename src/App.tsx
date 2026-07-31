@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { TargetLanguage, LearningItem, ProductionPrompt, ProductionAttempt, FossilizedError } from './types';
 import { INITIAL_PROMPTS, INITIAL_ITEMS } from './data/initialData';
+import { calculateNextMasteryState, scheduleReview } from './lib/engine';
 import { Header } from './components/Header';
 import { BugunTab } from './components/Tabs/BugunTab';
 import { UretTab } from './components/Tabs/UretTab';
@@ -15,13 +16,10 @@ import { PwaInstallModal } from './components/PwaInstallModal';
 import { FloatingAssistantChat } from './components/FloatingAssistantChat';
 
 const todayKey = () => new Date().toISOString().slice(0, 10);
+const normalizeText = (value: string) => value.trim().toLocaleLowerCase().replace(/[.,!?;:'“”"()]/g, '').replace(/\s+/g, ' ');
 
 function readHistory(): Record<string, number> {
-  try {
-    return JSON.parse(localStorage.getItem('lingua_daily_history') || '{}');
-  } catch {
-    return {};
-  }
+  try { return JSON.parse(localStorage.getItem('lingua_daily_history') || '{}'); } catch { return {}; }
 }
 
 function calculateStreak(history: Record<string, number>): number {
@@ -54,30 +52,13 @@ export function App() {
   }, [darkMode]);
 
   const [prompts, setPrompts] = useState<ProductionPrompt[]>(() => {
-    try {
-      const saved = localStorage.getItem('lingua_prompts');
-      return saved ? JSON.parse(saved) : INITIAL_PROMPTS;
-    } catch {
-      return INITIAL_PROMPTS;
-    }
+    try { const saved = localStorage.getItem('lingua_prompts'); return saved ? JSON.parse(saved) : INITIAL_PROMPTS; } catch { return INITIAL_PROMPTS; }
   });
-
   const [learningItems, setLearningItems] = useState<LearningItem[]>(() => {
-    try {
-      const saved = localStorage.getItem('lingua_items');
-      return saved ? JSON.parse(saved) : INITIAL_ITEMS;
-    } catch {
-      return INITIAL_ITEMS;
-    }
+    try { const saved = localStorage.getItem('lingua_items'); return saved ? JSON.parse(saved) : INITIAL_ITEMS; } catch { return INITIAL_ITEMS; }
   });
-
   const [fossilizedErrors, setFossilizedErrors] = useState<FossilizedError[]>(() => {
-    try {
-      const saved = localStorage.getItem('lingua_fossilized');
-      return saved ? JSON.parse(saved) : [];
-    } catch {
-      return [];
-    }
+    try { const saved = localStorage.getItem('lingua_fossilized'); return saved ? JSON.parse(saved) : []; } catch { return []; }
   });
 
   useEffect(() => localStorage.setItem('lingua_prompts', JSON.stringify(prompts)), [prompts]);
@@ -92,8 +73,58 @@ export function App() {
 
   const handleRecordAttempt = (attempt: ProductionAttempt) => {
     recordCompletedExercise();
-    if (!attempt.isFossilizedError) return;
     const matchedPrompt = prompts.find((prompt) => prompt.id === attempt.promptId);
+
+    if (matchedPrompt) {
+      const normalizedTarget = normalizeText(matchedPrompt.targetReference);
+      setLearningItems((previous) => {
+        const existingIndex = previous.findIndex(
+          (item) => item.language === attempt.language && normalizeText(item.targetText) === normalizedTarget,
+        );
+        const hasHints = attempt.maxHintLevel > 0;
+
+        if (existingIndex >= 0) {
+          const existing = previous[existingIndex];
+          const contextCount = attempt.finalRating === 'again' ? existing.contextCount : existing.contextCount + 1;
+          const schedule = scheduleReview(existing, attempt.finalRating);
+          const updated: LearningItem = {
+            ...existing,
+            ...schedule,
+            contextCount,
+            masteryState: calculateNextMasteryState(existing.masteryState, attempt.finalRating, hasHints, contextCount),
+            isActiveVocabulary: attempt.finalRating !== 'again' && (!hasHints || existing.isActiveVocabulary),
+            fossilizedCount: existing.fossilizedCount + (attempt.isFossilizedError ? 1 : 0),
+          };
+          return previous.map((item, index) => index === existingIndex ? updated : item);
+        }
+
+        const base: LearningItem = {
+          id: `practice_${attempt.language}_${Date.now()}`,
+          language: attempt.language,
+          domain: matchedPrompt.domain,
+          turkishText: matchedPrompt.turkishSentence,
+          targetText: matchedPrompt.targetReference,
+          keyTermOrPattern: matchedPrompt.keyTerms[0] || matchedPrompt.grammarPattern || matchedPrompt.targetReference,
+          masteryState: 'new',
+          isActiveVocabulary: false,
+          contextCount: attempt.finalRating === 'again' ? 0 : 1,
+          nextReviewDate: new Date().toISOString(),
+          stability: 1,
+          difficulty: 5,
+          fossilizedCount: attempt.isFossilizedError ? 1 : 0,
+        };
+        const schedule = scheduleReview(base, attempt.finalRating);
+        const created: LearningItem = {
+          ...base,
+          ...schedule,
+          masteryState: calculateNextMasteryState(base.masteryState, attempt.finalRating, hasHints, base.contextCount),
+          isActiveVocabulary: attempt.finalRating !== 'again' && !hasHints,
+        };
+        return [created, ...previous];
+      });
+    }
+
+    if (!attempt.isFossilizedError) return;
     const newError: FossilizedError = {
       id: `foss_${Date.now()}`,
       language: attempt.language,
@@ -109,9 +140,24 @@ export function App() {
     setFossilizedErrors((previous) => [newError, ...previous]);
   };
 
-  const handleAddLearningItem = (item: LearningItem) => setLearningItems((previous) => [item, ...previous]);
-  const handleAddLearningItems = (items: LearningItem[]) => setLearningItems((previous) => [...items, ...previous]);
-  const handleImportPrompts = (items: ProductionPrompt[]) => setPrompts((previous) => [...items, ...previous]);
+  const handleAddLearningItem = (item: LearningItem) => setLearningItems((previous) => {
+    const exists = previous.some((entry) => entry.language === item.language && normalizeText(entry.targetText) === normalizeText(item.targetText));
+    return exists ? previous : [item, ...previous];
+  });
+  const handleAddLearningItems = (items: LearningItem[]) => setLearningItems((previous) => {
+    const seen = new Set(previous.map((item) => `${item.language}:${normalizeText(item.targetText)}`));
+    const unique = items.filter((item) => {
+      const key = `${item.language}:${normalizeText(item.targetText)}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+    return [...unique, ...previous];
+  });
+  const handleImportPrompts = (items: ProductionPrompt[]) => setPrompts((previous) => {
+    const ids = new Set(previous.map((item) => item.id));
+    return [...items.filter((item) => !ids.has(item.id)), ...previous];
+  });
   const handleResolveFossilizedError = (id: string) => {
     setFossilizedErrors((previous) => previous.map((error) => error.id === id ? { ...error, resolved: true } : error));
     recordCompletedExercise();
@@ -126,9 +172,10 @@ export function App() {
     setDailyHistory({});
   };
 
+  const now = Date.now();
   const activeCount = learningItems.filter((item) => item.language === currentLanguage && item.isActiveVocabulary).length;
   const passiveCount = learningItems.filter((item) => item.language === currentLanguage && !item.isActiveVocabulary).length;
-  const dueCount = learningItems.filter((item) => item.language === currentLanguage && new Date(item.nextReviewDate) <= new Date()).length;
+  const dueCount = learningItems.filter((item) => item.language === currentLanguage && Number.isFinite(Date.parse(item.nextReviewDate)) && Date.parse(item.nextReviewDate) <= now).length;
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex flex-col selection:bg-sky-100 selection:text-sky-900 transition-colors">
