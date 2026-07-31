@@ -2,7 +2,8 @@ import { getValidSession } from './supabaseWeb';
 
 const SUPABASE_URL = 'https://nqmmlhrkhafwrfhwljdp.supabase.co';
 const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_WopUD0nNEX6VwqJzIlNEwQ_DaiBQZyp';
-const LOCAL_SYNC_MARKER = 'lingua_supabase_state_updated_at';
+const LAST_CLOUD_SYNC_MARKER = 'lingua_supabase_state_updated_at';
+const LOCAL_MUTATION_MARKER = 'lingua_local_state_updated_at';
 const RELOAD_GUARD = 'lingua_supabase_restore_done';
 const SYNC_KEYS = [
   'lingua_prompts',
@@ -13,9 +14,39 @@ const SYNC_KEYS = [
   'lingua_auto_sync',
 ] as const;
 
+type SyncKey = (typeof SYNC_KEYS)[number];
+
 interface CloudStateRow {
   state: Record<string, unknown> | null;
   updated_at: string;
+}
+
+function parseTime(value: string | null): number {
+  if (!value) return 0;
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function nowIso(): string {
+  return new Date().toISOString();
+}
+
+export function markLocalDataChanged(): void {
+  if (typeof localStorage === 'undefined') return;
+  localStorage.setItem(LOCAL_MUTATION_MARKER, nowIso());
+}
+
+export function persistSyncedLocalValue(key: SyncKey, value: unknown): void {
+  const serialized = typeof value === 'string' ? value : JSON.stringify(value);
+  if (localStorage.getItem(key) === serialized) return;
+  localStorage.setItem(key, serialized);
+  markLocalDataChanged();
+}
+
+export function removeSyncedLocalValue(key: SyncKey): void {
+  if (localStorage.getItem(key) === null) return;
+  localStorage.removeItem(key);
+  markLocalDataChanged();
 }
 
 function readLocalState(): Record<string, unknown> {
@@ -32,14 +63,18 @@ function readLocalState(): Record<string, unknown> {
   return state;
 }
 
+function hasMeaningfulLocalState(): boolean {
+  return SYNC_KEYS.some((key) => localStorage.getItem(key) !== null);
+}
+
 function writeLocalState(state: Record<string, unknown>): void {
   for (const key of SYNC_KEYS) {
-    if (!(key in state)) continue;
+    if (!(key in state)) {
+      localStorage.removeItem(key);
+      continue;
+    }
     const value = state[key];
-    localStorage.setItem(
-      key,
-      typeof value === 'string' ? value : JSON.stringify(value),
-    );
+    localStorage.setItem(key, typeof value === 'string' ? value : JSON.stringify(value));
   }
 }
 
@@ -71,7 +106,7 @@ async function uploadCloudState(): Promise<boolean> {
   const session = await getValidSession();
   if (!session) return false;
 
-  const now = new Date().toISOString();
+  const uploadedAt = nowIso();
   const response = await fetch(`${SUPABASE_URL}/rest/v1/app_state?on_conflict=user_id`, {
     method: 'POST',
     headers: {
@@ -83,34 +118,51 @@ async function uploadCloudState(): Promise<boolean> {
     body: JSON.stringify({
       user_id: session.user.id,
       state: readLocalState(),
-      updated_at: now,
+      updated_at: uploadedAt,
     }),
   });
 
   if (!response.ok) return false;
-  localStorage.setItem(LOCAL_SYNC_MARKER, now);
+  localStorage.setItem(LAST_CLOUD_SYNC_MARKER, uploadedAt);
+  localStorage.setItem(LOCAL_MUTATION_MARKER, uploadedAt);
   return true;
 }
 
-async function restoreNewerCloudState(): Promise<boolean> {
+type InitialResolution = 'restored' | 'upload-local' | 'unchanged' | 'no-session';
+
+async function resolveInitialConflict(): Promise<InitialResolution> {
+  const session = await getValidSession();
+  if (!session) return 'no-session';
+
   const cloud = await requestCloudState();
-  if (!cloud?.state) return false;
+  if (!cloud?.state) {
+    return hasMeaningfulLocalState() && await uploadCloudState() ? 'upload-local' : 'unchanged';
+  }
 
-  const localUpdatedAt = localStorage.getItem(LOCAL_SYNC_MARKER);
-  const cloudTime = Date.parse(cloud.updated_at);
-  const localTime = localUpdatedAt ? Date.parse(localUpdatedAt) : 0;
-  if (!Number.isFinite(cloudTime) || cloudTime <= localTime) return false;
+  const cloudTime = parseTime(cloud.updated_at);
+  const localMutationTime = parseTime(localStorage.getItem(LOCAL_MUTATION_MARKER));
+  const lastCloudSyncTime = parseTime(localStorage.getItem(LAST_CLOUD_SYNC_MARKER));
+  const localDecisionTime = Math.max(localMutationTime, lastCloudSyncTime);
 
-  writeLocalState(cloud.state);
-  localStorage.setItem(LOCAL_SYNC_MARKER, cloud.updated_at);
-  return true;
+  if (localMutationTime > lastCloudSyncTime && localMutationTime >= cloudTime) {
+    return await uploadCloudState() ? 'upload-local' : 'unchanged';
+  }
+
+  if (cloudTime > localDecisionTime || !hasMeaningfulLocalState()) {
+    writeLocalState(cloud.state);
+    localStorage.setItem(LAST_CLOUD_SYNC_MARKER, cloud.updated_at);
+    localStorage.setItem(LOCAL_MUTATION_MARKER, cloud.updated_at);
+    return 'restored';
+  }
+
+  return 'unchanged';
 }
 
 export async function startSupabaseDataSync(): Promise<() => void> {
   if (typeof window === 'undefined') return () => undefined;
 
-  const restored = await restoreNewerCloudState();
-  if (restored && sessionStorage.getItem(RELOAD_GUARD) !== 'true') {
+  const initialResolution = await resolveInitialConflict();
+  if (initialResolution === 'restored' && sessionStorage.getItem(RELOAD_GUARD) !== 'true') {
     sessionStorage.setItem(RELOAD_GUARD, 'true');
     window.location.reload();
     return () => undefined;
@@ -119,11 +171,16 @@ export async function startSupabaseDataSync(): Promise<() => void> {
 
   let lastSnapshot = stableSnapshot();
   let isSyncing = false;
+  let debounceId: number | null = null;
 
   const syncIfChanged = async (force = false) => {
     if (isSyncing) return;
     const current = stableSnapshot();
     if (!force && current === lastSnapshot) return;
+
+    if (current !== lastSnapshot && parseTime(localStorage.getItem(LOCAL_MUTATION_MARKER)) <= parseTime(localStorage.getItem(LAST_CLOUD_SYNC_MARKER))) {
+      markLocalDataChanged();
+    }
 
     isSyncing = true;
     try {
@@ -133,31 +190,46 @@ export async function startSupabaseDataSync(): Promise<() => void> {
     }
   };
 
-  const cloud = await requestCloudState();
-  if (!cloud) {
-    const uploaded = await uploadCloudState();
-    if (uploaded) lastSnapshot = stableSnapshot();
-  }
+  const scheduleSync = () => {
+    if (debounceId !== null) window.clearTimeout(debounceId);
+    debounceId = window.setTimeout(() => {
+      debounceId = null;
+      void syncIfChanged();
+    }, 1500);
+  };
 
-  // Uygulama giriş ekranından açılmışsa oturum sonradan kurulabilir.
-  // İlk birkaç tur zorunlu denenerek mevcut yerel veri hesaba bağlanır.
+  let observedSnapshot = lastSnapshot;
   let warmupAttempts = 0;
   const intervalId = window.setInterval(() => {
+    const current = stableSnapshot();
+    if (current !== observedSnapshot) {
+      observedSnapshot = current;
+      markLocalDataChanged();
+      scheduleSync();
+    }
+
     warmupAttempts += 1;
-    void syncIfChanged(warmupAttempts <= 6);
-  }, 5000);
+    if (warmupAttempts <= 6) void syncIfChanged(true);
+  }, 2000);
 
   const onVisibility = () => {
     if (document.visibilityState === 'hidden') void syncIfChanged(true);
   };
-  const onBeforeUnload = () => void syncIfChanged(true);
+  const onPageHide = () => void syncIfChanged(true);
+  const onOnline = () => void resolveInitialConflict().then((resolution) => {
+    if (resolution === 'restored') window.location.reload();
+    else void syncIfChanged(true);
+  });
 
   document.addEventListener('visibilitychange', onVisibility);
-  window.addEventListener('beforeunload', onBeforeUnload);
+  window.addEventListener('pagehide', onPageHide);
+  window.addEventListener('online', onOnline);
 
   return () => {
     window.clearInterval(intervalId);
+    if (debounceId !== null) window.clearTimeout(debounceId);
     document.removeEventListener('visibilitychange', onVisibility);
-    window.removeEventListener('beforeunload', onBeforeUnload);
+    window.removeEventListener('pagehide', onPageHide);
+    window.removeEventListener('online', onOnline);
   };
 }
