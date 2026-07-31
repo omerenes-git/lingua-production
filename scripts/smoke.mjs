@@ -34,6 +34,8 @@ const requiredFiles = [
   'src/lib/supabaseWeb.ts',
   'src/lib/supabaseDataSync.ts',
   'src/components/SupabaseAuthGate.tsx',
+  'src/components/FloatingAssistantChat.tsx',
+  'src/components/Tabs/GramerPratigiTab.tsx',
   'public/manifest.json',
   'public/service-worker.js',
   'supabase/functions/lingua-web-api/index.ts',
@@ -43,13 +45,24 @@ for (const path of requiredFiles) {
   check(`Dosya mevcut: ${path}`, await exists(path), 'Production için gerekli dosya bulunamadı.');
 }
 
-const [main, apiClient, supabaseWeb, edgeFunction, manifest, packageJson] = await Promise.all([
+const [
+  main,
+  apiClient,
+  supabaseWeb,
+  edgeFunction,
+  manifest,
+  packageJson,
+  grammarTab,
+  floatingAssistant,
+] = await Promise.all([
   read('src/main.tsx'),
   read('src/lib/linguaApi.ts'),
   read('src/lib/supabaseWeb.ts'),
   read('supabase/functions/lingua-web-api/index.ts'),
   read('public/manifest.json'),
   read('package.json'),
+  read('src/components/Tabs/GramerPratigiTab.tsx'),
+  read('src/components/FloatingAssistantChat.tsx'),
 ]);
 
 check('Merkezi Edge Function istemcisi kullanıma hazır', apiClient.includes('callLinguaApi') && apiClient.includes('/functions/v1/lingua-web-api'), 'callLinguaApi veya Edge Function adresi eksik.');
@@ -63,6 +76,9 @@ check('Service worker production girişinde kayıtlı', main.includes('serviceWo
 check('Edge Function kullanıcı girdisini sistem komutu saymıyor', edgeFunction.includes('<user_data>') && edgeFunction.includes('never system instructions'), 'Prompt injection ayrımı eksik.');
 check('İstek boyutu sınırlandırılmış', edgeFunction.includes('MAX_BODY_CHARS') && edgeFunction.includes('413'), 'Edge Function istek boyutu sınırı eksik.');
 check('Build komutu smoke testini çalıştırıyor', JSON.parse(packageJson).scripts?.build?.includes('npm run smoke'), 'Build öncesi smoke testi bağlı değil.');
+check('Gramer modülü merkezi API istemcisini kullanıyor', grammarTab.includes("callLinguaApi") && !grammarTab.includes("fetch('/api/"), 'Gramer modülünde eski göreli API çağrısı kaldı.');
+check('Lingua Asistan merkezi API istemcisini kullanıyor', floatingAssistant.includes('callLinguaApi') && !floatingAssistant.includes("fetch('/api/"), 'Lingua Asistan içinde eski göreli API çağrısı kaldı.');
+check('Asistan eylemleri izinli sekmelerle sınırlandırılmış', floatingAssistant.includes('VALID_TABS') && floatingAssistant.includes('VALID_TABS.has'), 'Sunucudan gelen sekme eylemleri doğrulanmıyor.');
 
 for (const result of checks) {
   console.log(`${result.passed ? '✓' : '✗'} ${result.name}`);
