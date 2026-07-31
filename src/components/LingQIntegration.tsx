@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
-import { TargetLanguage, ProductionPrompt, LearningItem } from '../types';
-import { BookOpen, RefreshCw, Key, Check, Sparkles, Database, Layers, ArrowRight, Zap } from 'lucide-react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { BookOpen, CheckCircle2, KeyRound, RefreshCw, ShieldCheck, TriangleAlert } from 'lucide-react';
+import { LearningItem, ProductionPrompt, TargetLanguage } from '../types';
 
 interface LingQStats {
   knownWordsCount: number;
@@ -18,302 +18,241 @@ interface LingQIntegrationProps {
   onAddLearningItems: (items: LearningItem[]) => void;
 }
 
+interface LingQResponse {
+  success?: boolean;
+  isRealApi?: boolean;
+  stats?: LingQStats;
+  error?: string;
+  targetWords?: Array<{
+    id?: number | string;
+    term?: string;
+    text?: string;
+    status?: number;
+    translation?: string;
+  }>;
+}
+
+const languageNames: Record<TargetLanguage, string> = {
+  en: 'İngilizce',
+  de: 'Almanca',
+  sr: 'Sırpça',
+};
+
 export const LingQIntegration: React.FC<LingQIntegrationProps> = ({
   currentLanguage,
   learningItems = [],
   onImportPrompts,
   onAddLearningItems,
 }) => {
-  const USER_PROVIDED_KEY = '25084f562eec41ee33ad2da1d4d742379b71d8f4';
-  const [apiKey, setApiKey] = useState(() => localStorage.getItem('lingq_api_key') || USER_PROVIDED_KEY);
-  const [isSyncing, setIsSyncing] = useState(false);
-  const [isRealApiConnected, setIsRealApiConnected] = useState<boolean>(() => {
-    return localStorage.getItem('lingq_api_connected') === 'true' || Boolean(localStorage.getItem('lingq_api_key') || USER_PROVIDED_KEY);
-  });
-
-  // Ensure key is saved to localStorage on initial mount
-  React.useEffect(() => {
-    if (!localStorage.getItem('lingq_api_key')) {
-      localStorage.setItem('lingq_api_key', USER_PROVIDED_KEY);
-    }
-  }, []);
+  const [apiKey, setApiKey] = useState('');
   const [stats, setStats] = useState<LingQStats | null>(null);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [isConnected, setIsConnected] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
 
-  const [autoSyncDaily, setAutoSyncDaily] = useState<boolean>(() => {
-    return localStorage.getItem('lingq_auto_sync') !== 'false';
-  });
+  const localStats = useMemo<LingQStats>(() => {
+    const items = learningItems.filter((item) => item.language === currentLanguage);
+    const learned = items.filter(
+      (item) =>
+        item.masteryState === 'mastered' ||
+        item.masteryState === 'independently_producible',
+    ).length;
 
-  const [hasSynced, setHasSynced] = useState(false);
+    return {
+      knownWordsCount: learned,
+      lingqsCreatedCount: items.length,
+      lingqsLearnedCount: items.filter((item) => item.masteryState === 'mastered').length,
+      level: 'Yalnızca uygulama içi veriler',
+      streakDays: 0,
+      lastSyncTime: 'LingQ bağlantısı yapılmadı',
+    };
+  }, [currentLanguage, learningItems]);
 
-  const langItems = React.useMemo(() => {
-    return learningItems.filter(i => i.language === currentLanguage);
-  }, [learningItems, currentLanguage]);
+  useEffect(() => {
+    setStats(localStats);
+    setIsConnected(false);
+    setMessage(null);
+  }, [currentLanguage, localStats]);
 
-  // Compute dynamic stats from learningItems if real API isn't active
-  React.useEffect(() => {
-    const saved = localStorage.getItem(`lingq_stats_${currentLanguage}`);
-    let loaded: LingQStats | null = null;
-    if (saved) {
-      try {
-        loaded = JSON.parse(saved);
-      } catch (e) {
-        console.error('Failed to parse lingq stats from storage', e);
-      }
-    }
+  const importTargetWords = (words: NonNullable<LingQResponse['targetWords']>) => {
+    const validWords = words
+      .filter((word) => {
+        const term = word.term ?? word.text;
+        return Boolean(term?.trim()) && (word.status === 2 || word.status === 3);
+      })
+      .slice(0, 30);
 
-    if (loaded && isRealApiConnected) {
-      setStats(loaded);
-    } else {
-      // Calculate truthful stats based on actual app learning items for currentLanguage
-      const knownCount = langItems.filter(i => i.masteryState === 'mastered' || i.masteryState === 'independently_producible').length;
-      const createdCount = langItems.length;
-      const learnedCount = langItems.filter(i => i.masteryState === 'mastered').length;
+    if (validWords.length === 0) return 0;
 
-      const computedStats: LingQStats = {
-        knownWordsCount: knownCount,
-        lingqsCreatedCount: createdCount,
-        lingqsLearnedCount: learnedCount,
-        level: currentLanguage === 'de' ? 'A1-A2 Temel Diyalog' : currentLanguage === 'sr' ? 'A1 Başlangıç' : 'B1-B2 Bağımsız Akıcılık',
-        streakDays: 7,
-        lastSyncTime: 'Canlı Güncellendi',
+    const now = Date.now();
+    const items: LearningItem[] = validWords.map((word, index) => {
+      const term = (word.term ?? word.text ?? '').trim();
+      return {
+        id: `lingq_${currentLanguage}_${word.id ?? `${now}_${index}`}`,
+        language: currentLanguage,
+        domain: 'general',
+        turkishText: word.translation?.trim() || 'LingQ hedef kelimesi',
+        targetText: term,
+        keyTermOrPattern: term,
+        masteryState: word.status === 3 ? 'recognized_in_context' : 'noticed',
+        isActiveVocabulary: true,
+        contextCount: 1,
+        nextReviewDate: new Date().toISOString(),
+        stability: word.status === 3 ? 2 : 1,
+        difficulty: word.status === 3 ? 4 : 6,
+        fossilizedCount: 0,
       };
-      setStats(computedStats);
-    }
-  }, [currentLanguage, langItems, isRealApiConnected]);
+    });
 
-  // Auto daily sync on component mount or language change
-  React.useEffect(() => {
-    const lastSyncDate = localStorage.getItem(`lingq_last_sync_date_${currentLanguage}`);
-    const todayStr = new Date().toISOString().slice(0, 10);
+    onAddLearningItems(items);
 
-    if (autoSyncDaily && lastSyncDate !== todayStr) {
-      handleSyncLingQ();
-      localStorage.setItem(`lingq_last_sync_date_${currentLanguage}`, todayStr);
-    }
-  }, [currentLanguage, autoSyncDaily]);
+    const prompts: ProductionPrompt[] = validWords.slice(0, 5).map((word, index) => {
+      const term = (word.term ?? word.text ?? '').trim();
+      return {
+        id: `lingq_prompt_${currentLanguage}_${word.id ?? `${now}_${index}`}`,
+        language: currentLanguage,
+        domain: 'general',
+        turkishSentence: `"${term}" kelimesini kullanarak gündelik bir cümle kur.`,
+        targetReference: term,
+        targetVariants: [term],
+        keyTerms: [term],
+        grammarPattern: 'LingQ durum 2–3 hedef kelime üretimi',
+        hintLadder: {
+          partOfSpeech: 'LingQ hedef kelimesi',
+          firstLetters: term.slice(0, Math.min(2, term.length)),
+          partialWords: term.slice(0, Math.max(2, Math.ceil(term.length / 2))),
+          patternHint: 'Kelimeyi doğal bir gündelik cümlede kullan.',
+          keyWordsGiven: term,
+          fullAnswer: term,
+        },
+      };
+    });
 
-  const handleToggleAutoSync = () => {
-    const nextVal = !autoSyncDaily;
-    setAutoSyncDaily(nextVal);
-    localStorage.setItem('lingq_auto_sync', String(nextVal));
+    onImportPrompts(prompts);
+    return items.length;
   };
 
-  const handleSaveApiKey = () => {
-    localStorage.setItem('lingq_api_key', apiKey.trim());
-    handleSyncLingQ();
-  };
-
-  const handleSyncLingQ = async () => {
+  const handleSync = async () => {
     setIsSyncing(true);
+    setMessage(null);
 
     try {
-      const res = await fetch('/api/lingq/stats', {
+      const response = await fetch('/api/lingq/stats', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          apiKey: apiKey.trim(),
-          language: currentLanguage
-        })
+          language: currentLanguage,
+          ...(apiKey.trim() ? { apiKey: apiKey.trim() } : {}),
+        }),
       });
 
-      if (res.ok) {
-        const data = await res.json();
-        if (data.stats) {
-          setStats(data.stats);
-          const isConnected = Boolean(data.isRealApi);
-          setIsRealApiConnected(isConnected);
-          localStorage.setItem('lingq_api_connected', String(isConnected));
-          localStorage.setItem(`lingq_stats_${currentLanguage}`, JSON.stringify(data.stats));
-        }
+      const data = (await response.json().catch(() => ({}))) as LingQResponse;
+      if (!response.ok || !data.success || !data.stats) {
+        throw new Error(data.error || `LingQ isteği başarısız (${response.status}).`);
       }
-    } catch (err) {
-      console.warn('LingQ sync endpoint error, fallback applied:', err);
+
+      setStats(data.stats);
+      setIsConnected(Boolean(data.isRealApi));
+      const importedCount = data.targetWords ? importTargetWords(data.targetWords) : 0;
+      setMessage(
+        importedCount > 0
+          ? `${importedCount} adet durum 2–3 hedef kelime çalışma listesine eklendi.`
+          : 'Gerçek LingQ istatistikleri alındı. Hedef kelime listesi bu uç noktada sunulmadı.',
+      );
+      setApiKey('');
+    } catch (error) {
+      setStats(localStats);
+      setIsConnected(false);
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : 'LingQ bağlantısı kurulamadı. Uygulama içi veriler gösteriliyor.',
+      );
+    } finally {
+      setIsSyncing(false);
     }
-
-    // Create sample imported items for the current language
-    const sampleLingQItems: LearningItem[] = [
-      {
-        id: `lingq_import_${Date.now()}_1`,
-        language: currentLanguage,
-        domain: 'general',
-        turkishText: currentLanguage === 'de' ? 'hızlı gelişme / atılım' : currentLanguage === 'sr' ? 'brzi napredak' : 'hızlı gelişme / atılım',
-        targetText: currentLanguage === 'de' ? 'rasche Entwicklung' : currentLanguage === 'sr' ? 'brzi napredak' : 'rapid breakthrough',
-        keyTermOrPattern: currentLanguage === 'de' ? 'rasche Entwicklung' : currentLanguage === 'sr' ? 'brzi napredak' : 'rapid breakthrough',
-        masteryState: 'noticed',
-        isActiveVocabulary: false,
-        contextCount: 1,
-        nextReviewDate: new Date().toISOString(),
-        stability: 1.5,
-        difficulty: 5.0,
-        fossilizedCount: 0,
-      },
-      {
-        id: `lingq_import_${Date.now()}_2`,
-        language: currentLanguage,
-        domain: 'travel',
-        turkishText: 'rezervasyon onayı',
-        targetText: currentLanguage === 'de' ? 'Reservierungsbestätigung' : currentLanguage === 'sr' ? 'potvrda rezervacije' : 'booking confirmation',
-        keyTermOrPattern: currentLanguage === 'de' ? 'Reservierungsbestätigung' : currentLanguage === 'sr' ? 'potvrda rezervacije' : 'booking confirmation',
-        masteryState: 'recognized_in_context',
-        isActiveVocabulary: false,
-        contextCount: 1,
-        nextReviewDate: new Date().toISOString(),
-        stability: 2.0,
-        difficulty: 4.0,
-        fossilizedCount: 0,
-      }
-    ];
-
-    onAddLearningItems(sampleLingQItems);
-
-    // Create personalized production prompt generated from user's LingQ words
-    const lingqCustomPrompts: ProductionPrompt[] = [
-      {
-        id: `p_lingq_${Date.now()}`,
-        language: currentLanguage,
-        domain: 'general',
-        turkishSentence: currentLanguage === 'de'
-          ? 'LingQ kelimelerinle: Yeni rezervasyon onayını e-posta ile hemen gönderebilir misiniz?'
-          : currentLanguage === 'sr'
-          ? 'LingQ kelimelerinle: Možete li mi odmah poslati novu potvrdu rezervacije?'
-          : 'LingQ\'daki bilinen kelimelerinle ilgili: Yeni rezervasyon onayını e-posta ile hemen gönderebilir misiniz?',
-        targetReference: currentLanguage === 'de' 
-          ? 'Könnten Sie mir die neue Reservierungsbestätigung bitte umgehend per E-Mail senden?'
-          : currentLanguage === 'sr'
-          ? 'Možete li mi odmah poslati novu potvrdu rezervacije putem e-pošte?'
-          : 'Could you please send me the new booking confirmation by email immediately?',
-        targetVariants: [
-          currentLanguage === 'de' ? 'Können Sie die Reservierungsbestätigung senden?' : currentLanguage === 'sr' ? 'Možete li poslati potvrdu?' : 'Can you email me the new booking confirmation right away?'
-        ],
-        keyTerms: currentLanguage === 'de' ? ['Reservierungsbestätigung', 'umgehend', 'E-Mail'] : currentLanguage === 'sr' ? ['potvrda rezervacije', 'e-pošte'] : ['booking confirmation', 'immediately', 'by email'],
-        grammarPattern: 'Polite Request / Direct Object',
-        hintLadder: {
-          partOfSpeech: 'Nezaket İstek Cümlesi (LingQ Özel İfadesi)',
-          firstLetters: currentLanguage === 'de' ? 'K... S... m...' : currentLanguage === 'sr' ? 'M... l... m...' : 'C... y... p... s...',
-          partialWords: currentLanguage === 'de' ? 'Könnten Sie...' : currentLanguage === 'sr' ? 'Možete li...' : 'Could you pl... send...',
-          patternHint: 'Polite question format',
-          keyWordsGiven: currentLanguage === 'de' ? 'Reservierungsbestätigung / E-Mail' : currentLanguage === 'sr' ? 'potvrda rezervacije / e-pošte' : 'booking confirmation / email / immediately',
-          fullAnswer: currentLanguage === 'de' 
-            ? 'Könnten Sie mir die neue Reservierungsbestätigung bitte umgehend per E-Mail senden?'
-            : currentLanguage === 'sr'
-            ? 'Možete li mi odmah poslati novu potvrdu rezervacije putem e-pošte?'
-            : 'Could you please send me the new booking confirmation by email immediately?'
-        }
-      }
-    ];
-
-    onImportPrompts(lingqCustomPrompts);
-
-    setIsSyncing(false);
-    setHasSynced(true);
   };
 
+  const shownStats = stats ?? localStats;
+
   return (
-    <div className="bg-gradient-to-br from-sky-900 to-slate-900 text-white p-6 rounded-3xl shadow-xl space-y-5 border border-sky-800/80">
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div className="flex items-center space-x-3">
-          <div className="w-12 h-12 rounded-2xl bg-sky-500/20 text-sky-400 border border-sky-400/30 flex items-center justify-center shrink-0">
-            <BookOpen className="w-7 h-7" />
+    <section className="rounded-3xl border border-sky-800/80 bg-gradient-to-br from-sky-950 to-slate-950 p-5 sm:p-6 text-white shadow-xl space-y-5">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div className="flex items-start gap-3">
+          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-sky-400/30 bg-sky-500/15 text-sky-300">
+            <BookOpen className="h-6 w-6" />
           </div>
           <div>
-            <div className="flex items-center space-x-2">
-              <span className="px-2.5 py-0.5 bg-sky-500/20 text-sky-300 border border-sky-400/30 text-[10px] font-bold rounded-full uppercase">
-                LingQ Entegrasyonu
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="rounded-full border border-sky-400/30 bg-sky-500/15 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-sky-200">
+                LingQ entegrasyonu
               </span>
-              {stats && (
-                <span className="text-xs text-emerald-400 font-semibold flex items-center space-x-1">
-                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse inline-block" />
-                  <span>Senkronize Edildi ({stats.lastSyncTime})</span>
-                </span>
-              )}
+              <span className={`flex items-center gap-1 text-xs font-semibold ${isConnected ? 'text-emerald-300' : 'text-amber-300'}`}>
+                {isConnected ? <CheckCircle2 className="h-3.5 w-3.5" /> : <TriangleAlert className="h-3.5 w-3.5" />}
+                {isConnected ? 'Gerçek API verisi' : 'Yerel veri görünümü'}
+              </span>
             </div>
-            <h3 className="text-lg font-bold mt-1">LingQ İstatistikleri & Aktif Egzersiz Dönüştürücü</h3>
+            <h3 className="mt-2 text-lg font-black">
+              {languageNames[currentLanguage]} LingQ istatistikleri
+            </h3>
+            <p className="mt-1 max-w-2xl text-xs leading-relaxed text-slate-300">
+              Senkronizasyon başarısız olduğunda artık örnek kelime eklenmez ve gerçek veri çekilmiş gibi gösterilmez.
+            </p>
           </div>
         </div>
 
         <button
-          onClick={handleSyncLingQ}
+          type="button"
+          onClick={handleSync}
           disabled={isSyncing}
-          className="px-4 py-2 bg-sky-500 hover:bg-sky-400 disabled:bg-slate-700 text-slate-950 font-bold text-xs rounded-xl shadow-md transition-all flex items-center space-x-2"
+          className="flex items-center gap-2 rounded-xl bg-sky-500 px-4 py-2.5 text-xs font-black text-slate-950 transition hover:bg-sky-400 disabled:cursor-wait disabled:bg-slate-700 disabled:text-slate-300"
         >
-          <RefreshCw className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} />
-          <span>{isSyncing ? 'LingQ Verileri Çekiliyor...' : 'LingQ Senkronize Et'}</span>
+          <RefreshCw className={`h-4 w-4 ${isSyncing ? 'animate-spin' : ''}`} />
+          {isSyncing ? 'Senkronize ediliyor…' : 'LingQ’yu senkronize et'}
         </button>
       </div>
 
-      {/* Stats Display Cards */}
-      {stats && (
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <div className="bg-white/5 p-3.5 rounded-2xl border border-white/10 space-y-1">
-            <div className="text-[11px] text-sky-300 font-semibold">Bilinen Kelimeler</div>
-            <div className="text-xl font-black text-white">{stats.knownWordsCount.toLocaleString()}</div>
-            <div className="text-[10px] text-slate-400">{stats.level}</div>
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        {[
+          ['Bilinen kelimeler', shownStats.knownWordsCount],
+          ['Oluşturulan LingQ', shownStats.lingqsCreatedCount],
+          ['Öğrenilen LingQ', shownStats.lingqsLearnedCount],
+          ['Seri', `${shownStats.streakDays} gün`],
+        ].map(([label, value]) => (
+          <div key={String(label)} className="rounded-2xl border border-white/10 bg-white/5 p-3.5">
+            <div className="text-[11px] font-semibold text-sky-200">{label}</div>
+            <div className="mt-1 text-xl font-black">{value}</div>
           </div>
+        ))}
+      </div>
 
-          <div className="bg-white/5 p-3.5 rounded-2xl border border-white/10 space-y-1">
-            <div className="text-[11px] text-sky-300 font-semibold">Oluşturulan LingQ'lar</div>
-            <div className="text-xl font-black text-white">{stats.lingqsCreatedCount.toLocaleString()}</div>
-            <div className="text-[10px] text-slate-400">Hedef Kelime Bankası</div>
-          </div>
-
-          <div className="bg-white/5 p-3.5 rounded-2xl border border-white/10 space-y-1">
-            <div className="text-[11px] text-emerald-300 font-semibold">Öğrenilen LingQ'lar</div>
-            <div className="text-xl font-black text-white">{stats.lingqsLearnedCount.toLocaleString()}</div>
-            <div className="text-[10px] text-emerald-400 font-medium">FSRS Deste Aktifi</div>
-          </div>
-
-          <div className="bg-white/5 p-3.5 rounded-2xl border border-white/10 space-y-1">
-            <div className="text-[11px] text-amber-300 font-semibold">LingQ Serisi</div>
-            <div className="text-xl font-black text-white">{stats.streakDays} Gün 🔥</div>
-            <div className="text-[10px] text-slate-400">Günlük Çalışma</div>
-          </div>
+      <div className="rounded-2xl border border-white/10 bg-white/5 p-4 space-y-3">
+        <div className="flex items-start gap-2 text-xs leading-relaxed text-slate-300">
+          <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-emerald-300" />
+          Anahtar kod içine gömülmez ve tarayıcıda kaydedilmez. Sunucuda bir LingQ gizli anahtarı tanımlıysa alanı boş bırakabilirsin; aksi hâlde anahtar yalnız bu istek için gönderilir.
         </div>
-      )}
-
-      {/* LingQ API Key form or info */}
-      <div className="bg-white/5 p-4 rounded-2xl border border-white/10 space-y-3">
-        <div className="flex items-center justify-between text-xs font-bold text-slate-300 flex-wrap gap-2">
-          <div className="flex items-center space-x-2">
-            <Key className="w-4 h-4 text-sky-400" />
-            <span>LingQ API Key (Opsiyonel / Otomatik Demo Modu Etkin)</span>
-          </div>
-
-          <label className="flex items-center space-x-2 cursor-pointer bg-slate-800/80 px-2.5 py-1 rounded-lg border border-slate-700">
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <div className="relative flex-1">
+            <KeyRound className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
             <input
-              type="checkbox"
-              checked={autoSyncDaily}
-              onChange={handleToggleAutoSync}
-              className="accent-sky-500 rounded"
+              type="password"
+              value={apiKey}
+              onChange={(event) => setApiKey(event.target.value)}
+              autoComplete="off"
+              placeholder="LingQ API anahtarı (sunucuda tanımlıysa boş bırak)"
+              className="w-full rounded-xl border border-slate-700 bg-slate-950 py-3 pl-9 pr-3 text-xs font-mono text-white outline-none focus:border-sky-500"
             />
-            <span className="text-[11px] text-sky-200">Otomatik Günlük Veri Çekme</span>
-          </label>
+          </div>
         </div>
-
-        <div className="flex items-center space-x-2">
-          <input
-            type="password"
-            value={apiKey}
-            onChange={(e) => setApiKey(e.target.value)}
-            placeholder="LingQ API Anahtarınız (Örn: 8a92...)"
-            className="flex-1 p-2.5 bg-slate-900/80 border border-slate-700 rounded-xl text-xs font-mono text-white focus:outline-none focus:ring-2 focus:ring-sky-500"
-          />
-          <button
-            onClick={handleSaveApiKey}
-            className="px-3.5 py-2.5 bg-sky-600 hover:bg-sky-500 text-white font-bold text-xs rounded-xl transition-colors"
-          >
-            Kaydet & Yükle
-          </button>
+        <div className="text-[11px] text-slate-400">
+          Son durum: {shownStats.lastSyncTime} · {shownStats.level}
         </div>
-
-        {hasSynced && (
-          <div className="p-3 bg-emerald-500/10 border border-emerald-500/30 rounded-xl text-xs text-emerald-300 flex items-center space-x-2">
-            <Zap className="w-4 h-4 shrink-0 text-emerald-400" />
-            <span>
-              <strong>Başarılı!</strong> LingQ hesabınızdaki kelimeler çekildi ve "Üret" sekmesine özel pratik egzersizi olarak eklendi!
-            </span>
+        {message && (
+          <div className={`rounded-xl border px-3 py-2.5 text-xs ${isConnected ? 'border-emerald-700/60 bg-emerald-950/40 text-emerald-200' : 'border-amber-700/60 bg-amber-950/40 text-amber-200'}`}>
+            {message}
           </div>
         )}
       </div>
-    </div>
+    </section>
   );
 };

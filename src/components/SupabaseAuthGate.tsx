@@ -1,7 +1,16 @@
 import React, { FormEvent, useEffect, useState } from 'react';
-import { LockKeyhole, LogIn, LogOut, ShieldCheck } from 'lucide-react';
 import {
+  KeyRound,
+  LockKeyhole,
+  LogIn,
+  LogOut,
+  MailCheck,
+  ShieldCheck,
+} from 'lucide-react';
+import {
+  AUTH_REQUIRED_EVENT,
   getValidSession,
+  requestPasswordReset,
   signInWithPassword,
   signOut,
   type WebSession,
@@ -17,18 +26,29 @@ export const SupabaseAuthGate: React.FC<SupabaseAuthGateProps> = ({ children }) 
   const [password, setPassword] = useState('');
   const [isChecking, setIsChecking] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isResetting, setIsResetting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
+
     getValidSession().then((current) => {
       if (!active) return;
       setSession(current);
       setIsChecking(false);
     });
 
+    const handleAuthRequired = () => {
+      setSession(null);
+      setPassword('');
+      setNotice('Oturum süren doldu. Lütfen yeniden giriş yap.');
+    };
+    window.addEventListener(AUTH_REQUIRED_EVENT, handleAuthRequired);
+
     return () => {
       active = false;
+      window.removeEventListener(AUTH_REQUIRED_EVENT, handleAuthRequired);
     };
   }, []);
 
@@ -38,6 +58,7 @@ export const SupabaseAuthGate: React.FC<SupabaseAuthGateProps> = ({ children }) 
 
     setIsSubmitting(true);
     setError(null);
+    setNotice(null);
     const result = await signInWithPassword(email, password);
     setIsSubmitting(false);
 
@@ -48,6 +69,26 @@ export const SupabaseAuthGate: React.FC<SupabaseAuthGateProps> = ({ children }) 
 
     setPassword('');
     setSession(result.session);
+  };
+
+  const handlePasswordReset = async () => {
+    if (!email.trim()) {
+      setError('Önce Supabase hesabındaki e-posta adresini yaz.');
+      return;
+    }
+
+    setIsResetting(true);
+    setError(null);
+    setNotice(null);
+    const result = await requestPasswordReset(email);
+    setIsResetting(false);
+
+    if (result.error) {
+      setError(result.error);
+      return;
+    }
+
+    setNotice('Parola sıfırlama bağlantısı e-posta adresine gönderildi.');
   };
 
   const handleSignOut = async () => {
@@ -81,7 +122,7 @@ export const SupabaseAuthGate: React.FC<SupabaseAuthGateProps> = ({ children }) 
               </div>
               <h1 className="text-2xl font-black tracking-tight">Güvenli giriş</h1>
               <p className="text-sm text-slate-400 mt-2 leading-relaxed">
-                AI özellikleri ve kişisel öğrenme verileri yalnız Supabase hesabındaki oturumla açılır.
+                AI özellikleri ve kişisel öğrenme verileri yalnız Supabase oturumuyla açılır.
               </p>
             </div>
           </div>
@@ -119,6 +160,13 @@ export const SupabaseAuthGate: React.FC<SupabaseAuthGateProps> = ({ children }) 
               </div>
             )}
 
+            {notice && (
+              <div className="flex items-start gap-2 rounded-xl border border-emerald-800/70 bg-emerald-950/40 px-3.5 py-3 text-xs text-emerald-200">
+                <MailCheck className="h-4 w-4 shrink-0" />
+                {notice}
+              </div>
+            )}
+
             <button
               type="submit"
               disabled={isSubmitting || !email.trim() || !password}
@@ -131,11 +179,21 @@ export const SupabaseAuthGate: React.FC<SupabaseAuthGateProps> = ({ children }) 
               )}
               {isSubmitting ? 'Giriş yapılıyor…' : 'Uygulamaya gir'}
             </button>
+
+            <button
+              type="button"
+              onClick={handlePasswordReset}
+              disabled={isResetting}
+              className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-xs font-bold text-slate-300 transition hover:border-sky-700 hover:text-sky-200 disabled:cursor-wait disabled:opacity-60 flex items-center justify-center gap-2"
+            >
+              <KeyRound className="h-4 w-4" />
+              {isResetting ? 'Bağlantı gönderiliyor…' : 'Şifremi unuttum'}
+            </button>
           </form>
 
           <div className="mt-5 flex items-start gap-2 text-[11px] leading-relaxed text-slate-500">
             <ShieldCheck className="h-4 w-4 text-emerald-500 shrink-0 mt-0.5" />
-            Şifren uygulama koduna veya GitHub’a yazılmaz. Tarayıcı yalnız kısa ömürlü Supabase oturum belirtecini saklar.
+            Şifren GitHub’a veya uygulama koduna yazılmaz. Süresi dolan oturum otomatik olarak giriş ekranına döner.
           </div>
         </div>
       </div>
