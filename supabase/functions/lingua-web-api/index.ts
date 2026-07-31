@@ -135,8 +135,7 @@ function promptFor(action: string, payload: JsonRecord): string {
 function translationFromCard(card: JsonRecord): string {
   const direct = asString(card.translation) || asString(card.hint) || asString(card.meaning);
   if (direct) return direct;
-  const hints = asArray(card.hints);
-  for (const hint of hints) {
+  for (const hint of asArray(card.hints)) {
     const record = asRecord(hint);
     const value = asString(record.text) || asString(record.translation) || asString(record.hint);
     if (value) return value;
@@ -153,17 +152,20 @@ function cardArray(payload: unknown): unknown[] | null {
   return null;
 }
 
-async function fetchLingqCards(apiKey: string, language: string): Promise<{ verified: boolean; words: JsonRecord[]; warning?: string }> {
+async function fetchLingqCards(apiKey: string, language: string): Promise<{ verified: boolean; words: JsonRecord[]; totalCount: number; warning?: string }> {
   const query = new URLSearchParams({ page_size: '100', limit: '100' });
   for (const status of [2, 3, 4]) query.append('status', String(status));
-  const url = `https://www.lingq.com/api/v2/${language}/cards/?${query.toString()}`;
-  const response = await fetch(url, { headers: { Authorization: `Token ${apiKey}`, Accept: 'application/json' } });
+  const response = await fetch(`https://www.lingq.com/api/v2/${language}/cards/?${query.toString()}`, {
+    headers: { Authorization: `Token ${apiKey}`, Accept: 'application/json' },
+  });
   if (!response.ok) {
-    return { verified: false, words: [], warning: `LingQ kart uç noktası ${response.status} döndürdü.` };
+    return { verified: false, words: [], totalCount: 0, warning: `LingQ kart bağlantısı başarısız (${response.status}).` };
   }
   const raw = await response.json();
   const cards = cardArray(raw);
-  if (!cards) return { verified: false, words: [], warning: 'LingQ kart yanıtının liste biçimi tanınmadı.' };
+  if (!cards) return { verified: false, words: [], totalCount: 0, warning: 'LingQ kart yanıtının liste biçimi tanınmadı.' };
+  const root = asRecord(raw);
+  const totalCount = asNumber(root.count ?? root.total ?? root.total_count, cards.length);
   const seen = new Set<string>();
   const words: JsonRecord[] = [];
   for (const item of cards) {
@@ -177,35 +179,35 @@ async function fetchLingqCards(apiKey: string, language: string): Promise<{ veri
     words.push({ id: card.id ?? card.pk ?? `${language}_${key}`, term, status, translation: translationFromCard(card) });
     if (words.length >= 100) break;
   }
-  return { verified: true, words };
+  return { verified: true, words, totalCount };
 }
 
 async function lingqStats(payload: JsonRecord): Promise<Response> {
-  const suppliedKey = asString(payload.apiKey);
-  const apiKey = suppliedKey || (Deno.env.get('LINGQ_API_KEY')?.trim() ?? '');
+  const apiKey = asString(payload.apiKey) || (Deno.env.get('LINGQ_API_KEY')?.trim() ?? '');
   const language = payload.language === 'de' ? 'de' : payload.language === 'sr' ? 'sr' : 'en';
-  if (!apiKey) return jsonResponse({ success: false, isRealApi: false, error: 'LingQ API anahtarı girilmedi ve sunucuda LINGQ_API_KEY tanımlı değil.' }, 400);
-
-  const profileResponse = await fetch(`https://www.lingq.com/api/v2/${language}/profile/`, {
-    headers: { Authorization: `Token ${apiKey}`, Accept: 'application/json' },
-  });
-  if (!profileResponse.ok) {
-    return jsonResponse({ success: false, isRealApi: false, error: `LingQ profil bağlantısı başarısız (${profileResponse.status}).` }, profileResponse.status === 401 ? 401 : 502);
+  if (!apiKey) {
+    return jsonResponse({ success: false, isRealApi: false, error: 'LingQ API anahtarı girilmedi ve sunucuda LINGQ_API_KEY tanımlı değil.' }, 400);
   }
-  const profile = asRecord(await profileResponse.json());
+
   const cards = await fetchLingqCards(apiKey, language);
+  if (!cards.verified) {
+    const unauthorized = cards.warning?.includes('(401)') || cards.warning?.includes('(403)');
+    return jsonResponse({ success: false, isRealApi: false, error: cards.warning || 'LingQ kart bağlantısı kurulamadı.' }, unauthorized ? 401 : 502);
+  }
+
+  const learnedCount = cards.words.filter((word) => asNumber(word.status) === 4).length;
   return jsonResponse({
     success: true,
     isRealApi: true,
-    cardsEndpointVerified: cards.verified,
-    targetWords: cards.verified ? cards.words : [],
-    warning: cards.warning,
+    cardsEndpointVerified: true,
+    targetWords: cards.words,
+    warning: 'LingQ profil uç noktası artık kullanılmıyor; sayaçlar doğrulanmış kart yanıtından gösteriliyor.',
     stats: {
-      knownWordsCount: asNumber(profile.known_words ?? profile.knownWords),
-      lingqsCreatedCount: asNumber(profile.lingqs_count ?? profile.lingqsCreated),
-      lingqsLearnedCount: asNumber(profile.lingqs_learned_count ?? profile.lingqsLearnedCount),
-      level: asString(profile.level_name ?? profile.level) || 'Bilinmiyor',
-      streakDays: asNumber(profile.streak ?? profile.streak_days),
+      knownWordsCount: 0,
+      lingqsCreatedCount: cards.totalCount,
+      lingqsLearnedCount: learnedCount,
+      level: 'Doğrulanmış LingQ kart verisi',
+      streakDays: 0,
       lastSyncTime: new Date().toISOString(),
     },
   });
