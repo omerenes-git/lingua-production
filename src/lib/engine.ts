@@ -1,9 +1,9 @@
-import { 
-  AIEvaluationResult, 
-  ConfidenceLevel, 
-  ErrorSeverity, 
-  FSRSRating, 
-  MasteryState 
+import {
+  AIEvaluationResult,
+  ConfidenceLevel,
+  FSRSRating,
+  LearningItem,
+  MasteryState,
 } from '../types';
 
 export interface RatingDecisionInput {
@@ -19,136 +19,108 @@ export interface RatingDecisionOutput {
   reasonTr: string;
 }
 
-/**
- * Deterministik karar motoru: LEARNING_ENGINE.md §3 & §4
- * AI sadece kalite sinyali ve öneri verir; nihai rating ve fossilized error bayrağı
- * bu saf fonksiyon ile belirlenir.
- */
+export interface ReviewScheduleUpdate {
+  stability: number;
+  difficulty: number;
+  nextReviewDate: string;
+  lastRating: FSRSRating;
+}
+
 export function decideFinalRating(input: RatingDecisionInput): RatingDecisionOutput {
   const { aiResult, maxHintLevelUsed, confidence, responseTimeMs } = input;
   const { errorSeverity, suggestedRating } = aiResult;
 
-  // Rule 1: Critical error + High confidence -> AGAIN & Fossilized Error
   if (errorSeverity === 'critical' && confidence === 'certain') {
-    return {
-      finalRating: 'again',
-      isFossilizedError: true,
-      reasonTr: 'Emin olunan kritik hata tespiti (Öğrenilmiş Yanlış). Kart sıfırlandı.',
-    };
+    return { finalRating: 'again', isFossilizedError: true, reasonTr: 'Emin olunan kritik hata tespiti. Kart kısa aralıkla tekrar edilecek.' };
   }
-
-  // Rule 2: Critical error
   if (errorSeverity === 'critical') {
-    return {
-      finalRating: 'again',
-      isFossilizedError: false,
-      reasonTr: 'Kritik anlam/dilbilgisi hatası nedeniyle kart baştan alınacak.',
-    };
+    return { finalRating: 'again', isFossilizedError: false, reasonTr: 'Kritik hata nedeniyle kart kısa aralıkla tekrar edilecek.' };
   }
-
-  // Rule 3: Full word or answer hint used (Level 5 or 6)
   if (maxHintLevelUsed >= 5) {
-    return {
-      finalRating: 'again',
-      isFossilizedError: false,
-      reasonTr: 'Tam kelime/cevap ipucu kullanıldığı için kart tekrar edilecek.',
-    };
+    return { finalRating: 'again', isFossilizedError: false, reasonTr: 'Tam kelime veya cevap ipucu kullanıldığı için kart tekrar edilecek.' };
   }
-
-  // Rule 4: Moderate error
   if (errorSeverity === 'moderate') {
-    return {
-      finalRating: 'hard',
-      isFossilizedError: confidence === 'certain',
-      reasonTr: 'Orta seviye hata tespiti. Zor (Hard) seviye olarak zamanlandı.',
-    };
+    return { finalRating: 'hard', isFossilizedError: confidence === 'certain', reasonTr: 'Orta düzey hata nedeniyle zor olarak zamanlandı.' };
   }
-
-  // Rule 5: Partial hint used (Level 3 or 4)
   if (maxHintLevelUsed >= 3) {
-    return {
-      finalRating: 'hard',
-      isFossilizedError: false,
-      reasonTr: 'Kısmi ipucu yardımıyla doğru yanıt verildi. Zor (Hard) olarak işaretlendi.',
-    };
+    return { finalRating: 'hard', isFossilizedError: false, reasonTr: 'Kısmi ipucuyla üretildiği için zor olarak zamanlandı.' };
   }
-
-  // Rule 6: Minor error or Level 1-2 hint
   if (errorSeverity === 'minor' || (maxHintLevelUsed >= 1 && maxHintLevelUsed <= 2)) {
-    return {
-      finalRating: 'good',
-      isFossilizedError: false,
-      reasonTr: 'Küçük aksaklık veya hafif ipucuyla başarılı yanıt. Başarılı (Good) zamanlama.',
-    };
+    return { finalRating: 'good', isFossilizedError: false, reasonTr: 'Küçük hata veya hafif ipucuyla başarılı üretim.' };
   }
-
-  // Rule 7: Style issue only + independent production
   if (errorSeverity === 'style_only' && maxHintLevelUsed === 0) {
     const isEasy = suggestedRating === 'easy' && responseTimeMs < 12000;
-    return {
-      finalRating: isEasy ? 'easy' : 'good',
-      isFossilizedError: false,
-      reasonTr: isEasy 
-        ? 'Sadece üslup nüansı, hızlı ve bağımsız üretim. Kolay (Easy).' 
-        : 'Üslup önerisi mevcut, başarılı bağımsız üretim.',
-    };
+    return { finalRating: isEasy ? 'easy' : 'good', isFossilizedError: false, reasonTr: isEasy ? 'Hızlı ve bağımsız üretim.' : 'Başarılı bağımsız üretim.' };
   }
-
-  // Rule 8: Perfect, hintless, fast
   if (maxHintLevelUsed === 0 && (errorSeverity === 'none' || errorSeverity === 'style_only')) {
-    const isFast = responseTimeMs < 10000;
-    const finalR = (suggestedRating === 'easy' || isFast) ? 'easy' : 'good';
-    return {
-      finalRating: finalR,
-      isFossilizedError: false,
-      reasonTr: `İpucusuz, bağımsız ve akıcı üretim! Nihai rating: ${finalR.toUpperCase()}.`,
-    };
+    const finalRating: FSRSRating = suggestedRating === 'easy' || responseTimeMs < 10000 ? 'easy' : 'good';
+    return { finalRating, isFossilizedError: false, reasonTr: `İpucusuz başarılı üretim: ${finalRating.toUpperCase()}.` };
   }
-
-  // Default fallback
-  return {
-    finalRating: suggestedRating || 'good',
-    isFossilizedError: false,
-    reasonTr: 'Otomatik değerlendirme tamamlandı.',
-  };
+  return { finalRating: suggestedRating || 'good', isFossilizedError: false, reasonTr: 'Otomatik değerlendirme tamamlandı.' };
 }
 
-/**
- * Mastery state transition rule engine (LEARNING_ENGINE.md §7)
- */
 export function calculateNextMasteryState(
   currentState: MasteryState,
   finalRating: FSRSRating,
   hasHints: boolean,
-  contextCount: number
+  contextCount: number,
 ): MasteryState {
-  // If rating is 'again', demote one step
   if (finalRating === 'again') {
-    if (currentState === 'mastered' || currentState === 'independently_producible') {
-      return 'hint_producible';
-    }
-    if (currentState === 'hint_producible') {
-      return 'recognized_in_context';
-    }
+    if (currentState === 'mastered' || currentState === 'independently_producible') return 'hint_producible';
+    if (currentState === 'hint_producible') return 'recognized_in_context';
     return currentState;
   }
 
-  // Successful production without hints
   if (!hasHints && (finalRating === 'good' || finalRating === 'easy')) {
-    if (contextCount >= 3 && currentState === 'independently_producible') {
-      return 'mastered';
-    }
-    if (currentState === 'new' || currentState === 'noticed' || currentState === 'recognized_in_context' || currentState === 'hint_producible') {
-      return 'independently_producible';
-    }
+    if (contextCount >= 3 && currentState === 'independently_producible') return 'mastered';
+    if (['new', 'noticed', 'recognized_in_context', 'hint_producible'].includes(currentState)) return 'independently_producible';
   }
 
-  // Successful production with hints
   if (hasHints && (finalRating === 'good' || finalRating === 'hard')) {
-    if (currentState === 'new' || currentState === 'noticed' || currentState === 'recognized_in_context') {
-      return 'hint_producible';
-    }
+    if (['new', 'noticed', 'recognized_in_context'].includes(currentState)) return 'hint_producible';
   }
 
   return currentState;
+}
+
+/**
+ * Deterministic spaced-repetition scheduler using FSRS concepts (stability and
+ * difficulty). This is intentionally a transparent local approximation rather
+ * than a claim of implementing the full upstream FSRS reference algorithm.
+ */
+export function scheduleReview(item: Pick<LearningItem, 'stability' | 'difficulty'>, rating: FSRSRating, now = new Date()): ReviewScheduleUpdate {
+  const previousStability = Math.max(0.2, Number(item.stability) || 1);
+  const previousDifficulty = Math.min(10, Math.max(1, Number(item.difficulty) || 5));
+
+  const difficultyDelta: Record<FSRSRating, number> = {
+    again: 1.2,
+    hard: 0.35,
+    good: -0.25,
+    easy: -0.65,
+  };
+  const difficulty = Math.min(10, Math.max(1, previousDifficulty + difficultyDelta[rating]));
+
+  let stability: number;
+  let intervalDays: number;
+  if (rating === 'again') {
+    stability = Math.max(0.25, previousStability * 0.45);
+    intervalDays = 10 / (24 * 60); // 10 minutes
+  } else if (rating === 'hard') {
+    stability = Math.max(0.5, previousStability * 1.2);
+    intervalDays = Math.max(1, Math.round(stability * 0.8));
+  } else if (rating === 'good') {
+    stability = Math.max(1, previousStability * (1.8 + (10 - difficulty) * 0.04));
+    intervalDays = Math.max(1, Math.round(stability));
+  } else {
+    stability = Math.max(2, previousStability * (2.5 + (10 - difficulty) * 0.06));
+    intervalDays = Math.max(2, Math.round(stability * 1.3));
+  }
+
+  const nextReview = new Date(now.getTime() + intervalDays * 24 * 60 * 60 * 1000);
+  return {
+    stability: Number(stability.toFixed(2)),
+    difficulty: Number(difficulty.toFixed(2)),
+    nextReviewDate: nextReview.toISOString(),
+    lastRating: rating,
+  };
 }
