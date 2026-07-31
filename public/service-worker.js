@@ -1,4 +1,4 @@
-const CACHE_NAME = 'lingua-production-v1';
+const CACHE_NAME = 'lingua-production-v2';
 
 function appUrl(path = '') {
   return new URL(path, self.registration.scope).toString();
@@ -46,8 +46,10 @@ self.addEventListener('fetch', (event) => {
     event.respondWith(
       fetch(request)
         .then((response) => {
-          const clone = response.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(appUrl('./'), clone));
+          if (response.ok) {
+            const clone = response.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(appUrl('./'), clone));
+          }
           return response;
         })
         .catch(async () => {
@@ -57,10 +59,32 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
+  // JavaScript, CSS ve manifest için ağ öncelikli strateji kullanılır.
+  // Böylece yeni deploy sonrasında kullanıcı eski uygulama paketinde kalmaz.
+  const isVersionedAsset =
+    url.pathname.includes('/assets/') ||
+    url.pathname.endsWith('.js') ||
+    url.pathname.endsWith('.css') ||
+    url.pathname.endsWith('manifest.json');
+
+  if (isVersionedAsset) {
+    event.respondWith(
+      fetch(request)
+        .then((response) => {
+          if (response.ok) {
+            const clone = response.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
+          }
+          return response;
+        })
+        .catch(() => caches.match(request)),
+    );
+    return;
+  }
+
   event.respondWith(
     caches.match(request).then((cached) => {
       if (cached) return cached;
-
       return fetch(request).then((response) => {
         if (response.ok) {
           const clone = response.clone();
