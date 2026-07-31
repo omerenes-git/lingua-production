@@ -1,0 +1,23 @@
+﻿# Environment variables and secrets
+.env
+.env.*
+!.env.example
+
+# Claude local settings
+.claude/settings.local.json
+
+# Expo local files
+.expo/
+dist/
+web-build/
+
+# Native secrets and signing files
+*.jks
+*.keystore
+*.p12
+*.mobileprovision
+
+# Logs and temporary files
+*.log
+.DS_Store
+Thumbs.db

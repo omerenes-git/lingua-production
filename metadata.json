@@ -1,0 +1,10 @@
+{
+  "name": "Lingua Production Coach",
+  "description": "Yapay zekâ destekli pasif kelime ezberi yerine aktif dil üretimi ve FSRS aralıklı tekrar sistemi koçu (İngilizce, Almanca, Sırpça).",
+  "requestFramePermissions": [
+    "microphone"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
