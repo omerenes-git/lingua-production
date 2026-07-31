@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { TargetLanguage, LearningItem, ProductionPrompt, ProductionAttempt, FossilizedError } from './types';
 import { INITIAL_PROMPTS, INITIAL_ITEMS } from './data/initialData';
 import { calculateNextMasteryState, scheduleReview } from './lib/engine';
+import { AI_SERVICE_UNAVAILABLE_MARKER } from './lib/aiService';
 import { Header } from './components/Header';
 import { BugunTab } from './components/Tabs/BugunTab';
 import { UretTab } from './components/Tabs/UretTab';
@@ -16,7 +17,7 @@ import { PwaInstallModal } from './components/PwaInstallModal';
 import { FloatingAssistantChat } from './components/FloatingAssistantChat';
 
 const todayKey = () => new Date().toISOString().slice(0, 10);
-const normalizeText = (value: string) => value.trim().toLocaleLowerCase().replace(/[.,!?;:'“”"()]/g, '').replace(/\s+/g, ' ');
+const normalizeText = (value: string) => value.trim().toLocaleLowerCase().replace(/[.,!?;:'“”\"()]/g, '').replace(/\s+/g, ' ');
 
 function readHistory(): Record<string, number> {
   try { return JSON.parse(localStorage.getItem('lingua_daily_history') || '{}'); } catch { return {}; }
@@ -72,6 +73,8 @@ export function App() {
   };
 
   const handleRecordAttempt = (attempt: ProductionAttempt) => {
+    if (attempt.evaluation.explanationTr.startsWith(AI_SERVICE_UNAVAILABLE_MARKER)) return;
+
     recordCompletedExercise();
     const matchedPrompt = prompts.find((prompt) => prompt.id === attempt.promptId);
 
