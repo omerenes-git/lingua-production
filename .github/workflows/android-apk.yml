@@ -7,7 +7,7 @@ on:
       - 'android-v*'
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build-apk:
@@ -68,10 +68,24 @@ jobs:
       - name: Rename APK
         run: cp android/app/build/outputs/apk/debug/app-debug.apk Lingua-Production-Coach-debug.apk
 
-      - name: Upload APK
+      - name: Print APK checksum
+        run: sha256sum Lingua-Production-Coach-debug.apk
+
+      - name: Upload APK (zipped workflow artifact)
         uses: actions/upload-artifact@v4
         with:
           name: Lingua-Production-Coach-APK
           path: Lingua-Production-Coach-debug.apk
           if-no-files-found: error
           retention-days: 30
+
+      - name: Publish APK as a GitHub Release asset (unzipped, direct download)
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="android-build-${{ github.run_number }}"
+          gh release create "$TAG" \
+            Lingua-Production-Coach-debug.apk \
+            --title "Lingua Production Coach – Android debug APK (build ${{ github.run_number }})" \
+            --notes "Otomatik oluşturulan debug APK. Bu dosyayı doğrudan indirip kurabilirsin, zip açmaya gerek yok." \
+            --target "${{ github.sha }}"
