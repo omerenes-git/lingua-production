@@ -962,7 +962,7 @@ export const UretTab: React.FC<UretTabProps> = ({
       <ContextMnemonicModal
         isOpen={showMnemonicModal}
         onClose={() => setShowMnemonicModal(false)}
-        wordOrPhrase={currentPrompt.keyTermOrPattern || currentPrompt.targetReference.split(' ')[0]}
+        wordOrPhrase={currentPrompt.keyTerms?.[0] || currentPrompt.grammarPattern || currentPrompt.targetReference.split(' ')[0]}
         language={currentLanguage}
         contextSentence={currentPrompt.targetReference}
       />
