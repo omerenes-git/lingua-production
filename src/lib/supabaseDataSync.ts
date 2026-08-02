@@ -239,6 +239,15 @@ function mergeStates(local: Record<string, unknown>, cloud: Record<string, unkno
   return merged;
 }
 
+export function getLastSyncedAt(): string | null {
+  if (typeof localStorage === 'undefined') return null;
+  return localStorage.getItem(LAST_CLOUD_SYNC_MARKER);
+}
+
+export async function syncNow(): Promise<InitialResolution> {
+  return reconcileWithCloud();
+}
+
 export function markLocalDataChanged(): void {
   if (typeof localStorage === 'undefined') return;
   localStorage.setItem(LOCAL_MUTATION_MARKER, nowIso());

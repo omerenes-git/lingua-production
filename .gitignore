@@ -11,6 +11,9 @@
 dist/
 web-build/
 
+# Dependencies
+node_modules/
+
 # Native secrets and signing files
 *.jks
 *.keystore
