@@ -39,8 +39,10 @@ interface GrammarHint {
   stepByStepSolution?: string[];
 }
 
+type GrammarVerdict = 'correct' | 'natural_variant' | 'minor_issue' | 'major_issue' | 'incorrect';
+
 interface EvaluationResult {
-  overallVerdict: 'correct' | 'minor_issue' | 'major_issue';
+  overallVerdict: GrammarVerdict;
   errors?: Array<{ message?: string; suggestion?: string }>;
   explanationTr?: string;
 }
@@ -184,8 +186,13 @@ const validHint = (value: unknown): value is GrammarHint => {
 const validEvaluation = (value: unknown): value is EvaluationResult => {
   if (!value || typeof value !== 'object') return false;
   const evaluation = value as Record<string, unknown>;
-  return ['correct', 'minor_issue', 'major_issue'].includes(String(evaluation.overallVerdict));
+  return ['correct', 'natural_variant', 'minor_issue', 'major_issue', 'incorrect'].includes(
+    String(evaluation.overallVerdict),
+  );
 };
+
+const isSuccessfulVerdict = (verdict: GrammarVerdict | undefined) =>
+  verdict === 'correct' || verdict === 'natural_variant';
 
 export const GramerPratigiTab: React.FC<GramerPratigiTabProps> = ({
   currentLanguage,
@@ -343,7 +350,7 @@ export const GramerPratigiTab: React.FC<GramerPratigiTabProps> = ({
   };
 
   const addToReviewDeck = () => {
-    if (!currentDrill || evaluation?.overallVerdict !== 'correct') return;
+    if (!currentDrill || !isSuccessfulVerdict(evaluation?.overallVerdict)) return;
     const item: LearningItem = {
       id: `grammar_${currentDrill.id}_${Date.now()}`,
       language: currentLanguage,
@@ -364,7 +371,7 @@ export const GramerPratigiTab: React.FC<GramerPratigiTabProps> = ({
   };
 
   const markRelatedErrorResolved = () => {
-    if (!onMarkErrorResolved || evaluation?.overallVerdict !== 'correct') return;
+    if (!onMarkErrorResolved || !isSuccessfulVerdict(evaluation?.overallVerdict)) return;
     const first = languageErrors[0] as unknown as Record<string, unknown> | undefined;
     if (first?.id) {
       onMarkErrorResolved(String(first.id));
@@ -514,7 +521,7 @@ export const GramerPratigiTab: React.FC<GramerPratigiTabProps> = ({
         {evaluation && (
           <div
             className={`p-4 rounded-2xl border space-y-3 ${
-              evaluation.overallVerdict === 'correct'
+              isSuccessfulVerdict(evaluation.overallVerdict)
                 ? 'bg-emerald-50 border-emerald-200'
                 : evaluation.overallVerdict === 'minor_issue'
                   ? 'bg-amber-50 border-amber-200'
@@ -522,13 +529,15 @@ export const GramerPratigiTab: React.FC<GramerPratigiTabProps> = ({
             }`}
           >
             <div className="flex items-center gap-2 font-black text-sm">
-              {evaluation.overallVerdict === 'correct' ? (
+              {isSuccessfulVerdict(evaluation.overallVerdict) ? (
                 <CheckCircle2 className="w-5 h-5 text-emerald-600" />
               ) : (
                 <AlertTriangle className="w-5 h-5 text-amber-600" />
               )}
               {evaluation.overallVerdict === 'correct'
                 ? 'Doğru'
+                : evaluation.overallVerdict === 'natural_variant'
+                  ? 'Doğal ve doğru alternatif'
                 : evaluation.overallVerdict === 'minor_issue'
                   ? 'Küçük düzeltme gerekli'
                   : 'Önemli düzeltme gerekli'}
@@ -549,7 +558,7 @@ export const GramerPratigiTab: React.FC<GramerPratigiTabProps> = ({
                 onAddLearningItem={onAddLearningItem}
               />
             </div>
-            {evaluation.overallVerdict === 'correct' && (
+            {isSuccessfulVerdict(evaluation.overallVerdict) && (
               <div className="flex flex-wrap gap-2">
                 <button
                   type="button"
