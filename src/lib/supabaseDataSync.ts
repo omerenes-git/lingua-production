@@ -5,7 +5,16 @@ const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_WopUD0nNEX6VwqJzIlNEwQ_DaiBQZyp
 const LAST_CLOUD_SYNC_MARKER = 'lingua_supabase_state_updated_at';
 const LOCAL_MUTATION_MARKER = 'lingua_local_state_updated_at';
 const VERSION_KEY = 'lingua_sync_versions';
-const RELOAD_GUARD = 'lingua_supabase_restore_done';
+
+/**
+ * Fired on `window` whenever a cloud merge writes new values into
+ * localStorage, carrying the applied DATA_KEYS payload. The app used to
+ * respond to a merge by calling `window.location.reload()`, which nuked
+ * in-memory UI state (active tab, in-progress Üret session) any time a
+ * background sync happened to run mid-session. Listeners should instead
+ * apply `event.detail` directly onto React state.
+ */
+export const CLOUD_DATA_APPLIED_EVENT = 'lingua:cloud-data-applied';
 
 const DATA_KEYS = [
   'lingua_prompts',
@@ -111,6 +120,11 @@ function writeLocalState(state: Record<string, unknown>): void {
       continue;
     }
     localStorage.setItem(key, serialize(state[key]));
+  }
+  if (typeof window !== 'undefined') {
+    const applied: Partial<Record<DataKey, unknown>> = {};
+    for (const key of DATA_KEYS) if (key in state) applied[key] = state[key];
+    window.dispatchEvent(new CustomEvent(CLOUD_DATA_APPLIED_EVENT, { detail: applied }));
   }
 }
 
@@ -368,24 +382,21 @@ async function reconcileWithCloud(): Promise<InitialResolution> {
   }
 
   if (await uploadCloudState(merged)) return localChanged ? 'merged' : 'uploaded';
-  // Upload başarısız: birleşmiş veri yerelde korunur (yukarıda yazıldı), ama
-  // senkronizasyon zamanı başarılıymış gibi güncellenmez; bir sonraki
-  // denemede buluta tekrar yüklenmeye çalışılır. localChanged ise 'merged'
-  // dönülür ki sayfa yenilensin ve bellekteki eski durum bu birleşimin
-  // üzerine yazmasın.
+  // Upload başarısız: birleşmiş veri yerelde korunur (yukarıda yazıldı ve
+  // CLOUD_DATA_APPLIED_EVENT ile bildirildi), ama senkronizasyon zamanı
+  // başarılıymış gibi güncellenmez; bir sonraki denemede buluta tekrar
+  // yüklenmeye çalışılır.
   return localChanged ? 'merged' : 'error';
 }
 
 export async function startSupabaseDataSync(): Promise<() => void> {
   if (typeof window === 'undefined') return () => undefined;
 
-  const initialResolution = await reconcileWithCloud();
-  if (initialResolution === 'merged' && sessionStorage.getItem(RELOAD_GUARD) !== 'true') {
-    sessionStorage.setItem(RELOAD_GUARD, 'true');
-    window.location.reload();
-    return () => undefined;
-  }
-  sessionStorage.removeItem(RELOAD_GUARD);
+  // Applies any cloud-side changes onto localStorage and notifies listeners
+  // (see CLOUD_DATA_APPLIED_EVENT) instead of reloading the page — a reload
+  // used to wipe in-memory session state (active tab, in-progress Üret
+  // practice) any time this ran mid-session.
+  await reconcileWithCloud();
 
   let previousData = readDataState();
   let lastSnapshot = stableSnapshot();
@@ -398,10 +409,9 @@ export async function startSupabaseDataSync(): Promise<() => void> {
     if (!force && current === lastSnapshot) return;
     isSyncing = true;
     try {
-      const resolution = await reconcileWithCloud();
+      await reconcileWithCloud();
       lastSnapshot = stableSnapshot();
       previousData = readDataState();
-      if (resolution === 'merged') window.location.reload();
     } finally {
       isSyncing = false;
     }

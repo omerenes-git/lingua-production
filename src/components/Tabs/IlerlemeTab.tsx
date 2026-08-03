@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { Activity, AlertTriangle, Award, BookOpen, Check, CheckCircle2, Download, FileText, HardDrive, ShieldCheck } from 'lucide-react';
 import { FossilizedError, LearningItem, ProductionPrompt, TargetLanguage } from '../../types';
 import { LingQIntegration } from '../LingQIntegration';
+import { calculateLanguageStreak, getDailyCount } from '../../lib/dailyProgress';
 
 interface IlerlemeTabProps {
   currentLanguage: TargetLanguage;
@@ -32,16 +33,6 @@ function readDailyHistory(): Record<string, number> {
 
 function dateKey(date: Date): string {
   return date.toISOString().slice(0, 10);
-}
-
-function calculateStreak(history: Record<string, number>): number {
-  let total = 0;
-  const cursor = new Date();
-  while ((history[dateKey(cursor)] || 0) > 0) {
-    total += 1;
-    cursor.setDate(cursor.getDate() - 1);
-  }
-  return total;
 }
 
 function storageSizeKb(): string {
@@ -89,14 +80,15 @@ export const IlerlemeTab: React.FC<IlerlemeTabProps> = ({
       rows.push({
         key,
         label: offset === 0 ? 'Bugün' : day.toLocaleDateString('tr-TR', { weekday: 'short' }),
-        count: Number(history[key] || 0),
+        count: getDailyCount(history, currentLanguage, key),
       });
     }
     return rows;
-  }, [JSON.stringify(history)]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [JSON.stringify(history), currentLanguage]);
 
   const weeklyExerciseCount = sevenDayData.reduce((sum, row) => sum + row.count, 0);
-  const streak = calculateStreak(history);
+  const streak = calculateLanguageStreak(history, currentLanguage);
   const correctionRate = langErrors.length > 0
     ? Math.round((resolvedErrors.length / langErrors.length) * 100)
     : null;

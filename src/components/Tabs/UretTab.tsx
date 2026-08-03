@@ -1,29 +1,30 @@
-import React, { useState } from 'react';
-import { 
-  TargetLanguage, 
-  Domain, 
+import React, { useEffect, useRef, useState } from 'react';
+import {
+  TargetLanguage,
+  Domain,
   IntensityLevel,
-  ProductionPrompt, 
-  ConfidenceLevel, 
-  AIEvaluationResult, 
+  ProductionPrompt,
+  ConfidenceLevel,
+  AIEvaluationResult,
   ProductionAttempt,
   FSRSRating,
   LearningItem
 } from '../../types';
 import { decideFinalRating } from '../../lib/engine';
 import { evaluateProduction } from '../../lib/aiService';
+import { selectNextPrompt, SelectPromptResult } from '../../lib/sentenceSelector';
 import { InteractiveWordDictionary } from '../InteractiveWordDictionary';
 import { VocabularyTooltip } from '../VocabularyTooltip';
 import { GrammarDeepDiveModal } from '../GrammarDeepDiveModal';
 import { PronunciationAnalyzerModal } from '../PronunciationAnalyzerModal';
 import { ContextMnemonicModal } from '../ContextMnemonicModal';
-import { 
-  Mic, 
-  MicOff, 
-  Send, 
-  CheckCircle, 
-  RefreshCw, 
-  Lightbulb, 
+import {
+  Mic,
+  MicOff,
+  Send,
+  CheckCircle,
+  RefreshCw,
+  Lightbulb,
   Sparkles,
   ArrowRight,
   ShieldAlert,
@@ -33,12 +34,17 @@ import {
   Flame,
   Zap,
   HelpCircle,
-  Brain
+  Brain,
+  Clock,
+  PartyPopper
 } from 'lucide-react';
 
 interface UretTabProps {
   currentLanguage: TargetLanguage;
   prompts: ProductionPrompt[];
+  learningItems: LearningItem[];
+  seenPromptIds: string[];
+  onPromptShown: (promptId: string) => void;
   onRecordAttempt: (attempt: ProductionAttempt) => void;
   onAddLearningItem?: (item: LearningItem) => void;
 }
@@ -46,12 +52,16 @@ interface UretTabProps {
 export const UretTab: React.FC<UretTabProps> = ({
   currentLanguage,
   prompts,
+  learningItems,
+  seenPromptIds,
+  onPromptShown,
   onRecordAttempt,
   onAddLearningItem,
 }) => {
   const [selectedDomain, setSelectedDomain] = useState<Domain | 'all'>('all');
   const [selectedIntensity, setSelectedIntensity] = useState<IntensityLevel | 'all'>('all');
-  const [currentIndex, setCurrentIndex] = useState(0);
+  const [currentPrompt, setCurrentPrompt] = useState<ProductionPrompt | null>(null);
+  const [selectionState, setSelectionState] = useState<SelectPromptResult | null>(null);
 
   // Interactive Dictionary Modal state
   const [selectedWord, setSelectedWord] = useState<string | null>(null);
@@ -75,15 +85,46 @@ export const UretTab: React.FC<UretTabProps> = ({
   const [showPronunciationModal, setShowPronunciationModal] = useState(false);
   const [showMnemonicModal, setShowMnemonicModal] = useState(false);
 
-  // Filter prompts by language, domain and intensity level
+  // Total prompts available for the current language/domain/intensity filter (for the "Kart X / Y" counter).
   const availablePrompts = prompts.filter(
-    (p) => 
-      p.language === currentLanguage && 
+    (p) =>
+      p.language === currentLanguage &&
       (selectedDomain === 'all' || p.domain === selectedDomain) &&
       (selectedIntensity === 'all' || !p.intensityLevel || p.intensityLevel === selectedIntensity)
   );
+  const seenCountInFilter = availablePrompts.filter((p) => seenPromptIds.includes(p.id)).length;
 
-  const currentPrompt = availablePrompts[currentIndex] || availablePrompts[0];
+  // Latest selection inputs kept in a ref so the mount/filter-change effect
+  // below can read fresh values without re-running every time `prompts` or
+  // `learningItems` gets a new array reference from unrelated app state
+  // changes (that used to yank the user onto a different sentence mid-typing).
+  const selectionInputsRef = useRef({ prompts, learningItems, seenPromptIds, currentLanguage, selectedDomain, selectedIntensity, onPromptShown });
+  selectionInputsRef.current = { prompts, learningItems, seenPromptIds, currentLanguage, selectedDomain, selectedIntensity, onPromptShown };
+
+  const pickNext = () => {
+    const inputs = selectionInputsRef.current;
+    const result = selectNextPrompt({
+      prompts: inputs.prompts,
+      language: inputs.currentLanguage,
+      domain: inputs.selectedDomain,
+      intensity: inputs.selectedIntensity,
+      seenPromptIds: inputs.seenPromptIds,
+      learningItems: inputs.learningItems,
+    });
+    setSelectionState(result);
+    setCurrentPrompt(result.status === 'ok' ? result.prompt : null);
+    setUserAnswer('');
+    setActiveHintLevel(0);
+    setEvaluation(null);
+    setFinalRatingInfo(null);
+    setCorrectionInput('');
+    setCorrectionSuccess(false);
+    if (result.status === 'ok') inputs.onPromptShown(result.prompt.id);
+  };
+
+  useEffect(() => {
+    pickNext();
+  }, [currentLanguage, selectedDomain, selectedIntensity]);
 
   // Speech Recognition (Web Speech API)
   const toggleSpeechRecognition = () => {
@@ -202,15 +243,7 @@ export const UretTab: React.FC<UretTabProps> = ({
   };
 
   const handleNextPrompt = () => {
-    setUserAnswer('');
-    setActiveHintLevel(0);
-    setEvaluation(null);
-    setFinalRatingInfo(null);
-    setCorrectionInput('');
-    setCorrectionSuccess(false);
-    if (availablePrompts.length > 0) {
-      setCurrentIndex((prev) => (prev + 1) % availablePrompts.length);
-    }
+    pickNext();
   };
 
   const handleCheckCorrection = () => {
@@ -230,7 +263,36 @@ export const UretTab: React.FC<UretTabProps> = ({
     setContextSentence(context);
   };
 
-  if (!currentPrompt) {
+  if (!currentPrompt || !selectionState || selectionState.status !== 'ok') {
+    if (selectionState?.status === 'awaiting_schedule') {
+      const dueDate = new Date(selectionState.nextDueAt);
+      return (
+        <div className="bg-white p-8 rounded-2xl border border-slate-200 text-center space-y-4">
+          <Clock className="w-12 h-12 text-sky-500 mx-auto" />
+          <h3 className="text-xl font-bold text-slate-800">Bu Turdaki Cümleler Tamamlandı</h3>
+          <p className="text-sm text-slate-500 max-w-md mx-auto">
+            Bu filtredeki tüm cümleleri gördün. Kalanlar FSRS planlı tekrar sırasında; henüz tekrar zamanları gelmedi
+            {dueDate && Number.isFinite(dueDate.getTime()) ? ` (sıradaki: ${dueDate.toLocaleString('tr-TR')})` : ''}.
+            Sessizce aynı cümleyi tekrar göstermek yerine bu turu burada bitiriyoruz.
+          </p>
+          <p className="text-xs text-slate-400">Farklı bir alan veya yoğunluk seviyesi seçerek yeni içerik bulabilirsin.</p>
+        </div>
+      );
+    }
+
+    if (selectionState?.status === 'pool_exhausted') {
+      return (
+        <div className="bg-white p-8 rounded-2xl border border-slate-200 text-center space-y-4">
+          <PartyPopper className="w-12 h-12 text-emerald-500 mx-auto" />
+          <h3 className="text-xl font-bold text-slate-800">Bu Oturumdaki Tüm Cümleleri Tamamladın</h3>
+          <p className="text-sm text-slate-500 max-w-md mx-auto">
+            Seçili alan/yoğunlukta bu oturumda gösterilecek başka cümle kalmadı; aynı cümle sessizce tekrar
+            gösterilmeyecek. Farklı bir alan seçebilir veya oturumu bitirip daha sonra devam edebilirsin.
+          </p>
+        </div>
+      );
+    }
+
     return (
       <div className="bg-white p-8 rounded-2xl border border-slate-200 text-center space-y-4">
         <Sparkles className="w-12 h-12 text-sky-500 mx-auto" />
@@ -330,11 +392,7 @@ export const UretTab: React.FC<UretTabProps> = ({
               {(['all', 'general', 'travel', 'social', 'clinical', 'ielts', 'family'] as (Domain | 'all')[]).map((dom) => (
                 <button
                   key={dom}
-                  onClick={() => {
-                    setSelectedDomain(dom);
-                    setCurrentIndex(0);
-                    setEvaluation(null);
-                  }}
+                  onClick={() => setSelectedDomain(dom)}
                   className={`px-3 py-1 text-xs font-semibold rounded-lg transition-all ${
                     selectedDomain === dom
                       ? 'bg-sky-600 text-white shadow-xs'
@@ -348,7 +406,7 @@ export const UretTab: React.FC<UretTabProps> = ({
           </div>
 
           <div className="text-xs text-slate-500 font-mono">
-            Kart: {currentIndex + 1} / {availablePrompts.length}
+            Kart: {Math.min(seenCountInFilter, availablePrompts.length)} / {availablePrompts.length}
           </div>
         </div>
 
@@ -365,11 +423,7 @@ export const UretTab: React.FC<UretTabProps> = ({
                 return (
                   <button
                     key={lvl}
-                    onClick={() => {
-                      setSelectedIntensity(lvl);
-                      setCurrentIndex(0);
-                      setEvaluation(null);
-                    }}
+                    onClick={() => setSelectedIntensity(lvl)}
                     className={`px-3 py-1 text-xs font-bold rounded-lg transition-all flex items-center space-x-1 ${
                       isSelected
                         ? lvl === 'beginner'
