@@ -352,7 +352,7 @@ async function reconcileWithCloud(): Promise<InitialResolution> {
   if (cloudResult.kind === 'not-found') {
     const initialized = { ...local, [VERSION_KEY]: bootstrapVersions(local, localFallback) };
     writeLocalState(initialized);
-    return await uploadCloudState(initialized) ? 'uploaded' : 'unchanged';
+    return await uploadCloudState(initialized) ? 'uploaded' : 'error';
   }
 
   const merged = mergeStates(local, cloudResult.state, localFallback, cloudResult.updatedAt);

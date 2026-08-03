@@ -323,16 +323,33 @@ describe('reconcileWithCloud (via syncNow)', () => {
     expect(localStorage.getItem('lingua_sync_versions')).toBeNull();
   });
 
-  it('upload başarısızsa son senkronizasyon zamanı başarılıymış gibi güncellenmiyor', async () => {
-    localStorage.setItem('lingua_items', JSON.stringify([{ id: 'x', targetText: 'local-item' }]));
-    installFetchMock({
-      get: () => jsonResponse(200, []),
-      post: () => jsonResponse(500),
-    });
+  it.each([
+    { label: 'POST 500 dönerse', post: () => jsonResponse(500) },
+    {
+      label: 'POST ağ hatası atarsa',
+      post: () => {
+        throw new TypeError('Failed to fetch');
+      },
+    },
+  ])(
+    'ilk bulut yüklemesi başarısız olursa ($label) sonuç error olur, senkron zamanı güncellenmez, yerel veri ve versiyon metadata korunur',
+    async ({ post }) => {
+      localStorage.setItem('lingua_items', JSON.stringify([{ id: 'x', targetText: 'local-item' }]));
+      const { calls } = installFetchMock({
+        get: () => jsonResponse(200, []),
+        post,
+      });
 
-    const resolution = await syncNow();
+      const resolution = await syncNow();
 
-    expect(resolution).toBe('unchanged');
-    expect(getLastSyncedAt()).toBeNull();
-  });
+      expect(resolution).toBe('error');
+      expect(getUploadCalls(calls)).toHaveLength(1);
+      expect(getLastSyncedAt()).toBeNull();
+      expect(JSON.parse(localStorage.getItem('lingua_items')!)).toEqual([
+        { id: 'x', targetText: 'local-item' },
+      ]);
+      const versions = JSON.parse(localStorage.getItem('lingua_sync_versions')!);
+      expect(typeof versions.lingua_items.x?.at).toBe('string');
+    },
+  );
 });
