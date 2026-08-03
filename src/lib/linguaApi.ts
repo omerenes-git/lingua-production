@@ -28,9 +28,13 @@ export async function callLinguaApi<TResponse>(action: string, payload: unknown)
     throw new Error('Oturum süresi doldu. Yeniden giriş yapın.');
   }
 
+  const functionSlug = action === '/api/generate-production-prompts'
+    ? 'generate-production-prompts'
+    : 'lingua-web-api';
+
   let response: Response;
   try {
-    response = await fetch(`${SUPABASE_URL}/functions/v1/lingua-web-api`, {
+    response = await fetch(`${SUPABASE_URL}/functions/v1/${functionSlug}`, {
       method: 'POST',
       headers: {
         apikey: SUPABASE_PUBLISHABLE_KEY,
