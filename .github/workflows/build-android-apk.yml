@@ -16,6 +16,7 @@ on:
 
 permissions:
   contents: write
+  issues: write
 
 concurrency:
   group: android-apk-latest
@@ -98,3 +99,23 @@ jobs:
             --repo "$GITHUB_REPOSITORY" \
             --title "Lingua Android APK - Latest" \
             --notes "Üret modunda AI ile sınırsız cümle üretimi, A1-C2 otomatik seviye ve senkronizasyon güncellemelerini içeren en güncel Android APK."
+
+      - name: Report successful APK build
+        if: success()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh issue create \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "APK hazır - run ${GITHUB_RUN_NUMBER}" \
+            --body "Android APK başarıyla üretildi. İndirme: https://github.com/${GITHUB_REPOSITORY}/releases/download/apk-latest/Lingua-Enes-latest.apk\n\nWorkflow: https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+
+      - name: Report failed APK build
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh issue create \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "APK derleme hatası - run ${GITHUB_RUN_NUMBER}" \
+            --body "Android APK derlemesi başarısız oldu. Workflow ayrıntıları: https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
