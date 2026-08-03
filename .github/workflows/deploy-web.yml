@@ -32,7 +32,13 @@ jobs:
           node-version: lts/*
 
       - name: Install dependencies
-        run: npm install --no-audit --no-fund
+        run: npm ci --no-audit --no-fund
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Test
+        run: npm test
 
       - name: Build production web app
         run: npm run build

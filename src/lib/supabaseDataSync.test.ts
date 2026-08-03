@@ -125,13 +125,25 @@ describe('reconcileWithCloud (via syncNow)', () => {
     ]);
   });
 
-  it.each([429, 503])('%i durumunda da veri üzerine yazılmıyor', async (status) => {
+  it.each([404, 429, 503])('%i durumunda da veri üzerine yazılmıyor', async (status) => {
     const { calls } = installFetchMock({ get: () => jsonResponse(status) });
 
     const resolution = await syncNow();
 
     expect(resolution).toBe('error');
     expect(getUploadCalls(calls)).toHaveLength(0);
+  });
+
+  it('404, boş sonuçtan farklı olarak "kayıt yok" sayılmıyor ve ilk yükleme tetiklenmiyor', async () => {
+    localStorage.setItem('lingua_items', JSON.stringify([{ id: 'x', targetText: 'local-item' }]));
+    const { calls } = installFetchMock({ get: () => jsonResponse(404) });
+
+    const resolution = await syncNow();
+
+    expect(resolution).toBe('error');
+    expect(getUploadCalls(calls)).toHaveLength(0);
+    expect(localStorage.getItem('lingua_sync_versions')).toBeNull();
+    expect(getLastSyncedAt()).toBeNull();
   });
 
   it('bulut daha yeniyse doğru birleşim yapılıyor', async () => {
@@ -226,6 +238,76 @@ describe('reconcileWithCloud (via syncNow)', () => {
 
     await syncNow();
 
+    const items = JSON.parse(localStorage.getItem('lingua_items')!) as Array<{ id: string }>;
+    expect(items.map((item) => item.id).sort()).toEqual(['a', 'b']);
+  });
+
+  it('birleşim gerekiyorken upload 500 dönerse senkron zamanı güncellenmez, birleşmiş veri korunur ve sonraki denemede yüklenir', async () => {
+    localStorage.setItem('lingua_items', JSON.stringify([{ id: 'a', targetText: 'local-a' }]));
+    localStorage.setItem(
+      'lingua_sync_versions',
+      JSON.stringify({ lingua_items: { a: { at: '2025-06-01T00:00:00.000Z' } } }),
+    );
+    const cloudRow = {
+      state: {
+        lingua_items: [{ id: 'b', targetText: 'cloud-b' }],
+        lingua_sync_versions: { lingua_items: { b: { at: '2025-06-02T00:00:00.000Z' } } },
+      },
+      updated_at: '2025-06-02T00:00:00.000Z',
+    };
+
+    const attempt1 = installFetchMock({
+      get: () => jsonResponse(200, [cloudRow]),
+      post: () => jsonResponse(500),
+    });
+
+    const firstResolution = await syncNow();
+
+    expect(firstResolution).toBe('merged');
+    expect(getUploadCalls(attempt1.calls)).toHaveLength(1);
+    expect(getLastSyncedAt()).toBeNull();
+    const itemsAfterFailedUpload = JSON.parse(localStorage.getItem('lingua_items')!) as Array<{ id: string }>;
+    expect(itemsAfterFailedUpload.map((item) => item.id).sort()).toEqual(['a', 'b']);
+
+    const attempt2 = installFetchMock({
+      get: () => jsonResponse(200, [cloudRow]),
+      post: () => jsonResponse(201),
+    });
+
+    const retryResolution = await syncNow();
+
+    expect(retryResolution).toBe('uploaded');
+    expect(getUploadCalls(attempt2.calls)).toHaveLength(1);
+    expect(getLastSyncedAt()).not.toBeNull();
+    const itemsAfterRetry = JSON.parse(localStorage.getItem('lingua_items')!) as Array<{ id: string }>;
+    expect(itemsAfterRetry.map((item) => item.id).sort()).toEqual(['a', 'b']);
+  });
+
+  it('birleşim gerekiyorken upload ağ hatası verirse senkron zamanı güncellenmez ve birleşmiş veri korunur', async () => {
+    localStorage.setItem('lingua_items', JSON.stringify([{ id: 'a', targetText: 'local-a' }]));
+    localStorage.setItem(
+      'lingua_sync_versions',
+      JSON.stringify({ lingua_items: { a: { at: '2025-06-01T00:00:00.000Z' } } }),
+    );
+    const cloudRow = {
+      state: {
+        lingua_items: [{ id: 'b', targetText: 'cloud-b' }],
+        lingua_sync_versions: { lingua_items: { b: { at: '2025-06-02T00:00:00.000Z' } } },
+      },
+      updated_at: '2025-06-02T00:00:00.000Z',
+    };
+
+    installFetchMock({
+      get: () => jsonResponse(200, [cloudRow]),
+      post: () => {
+        throw new TypeError('Failed to fetch');
+      },
+    });
+
+    const resolution = await syncNow();
+
+    expect(resolution).toBe('merged');
+    expect(getLastSyncedAt()).toBeNull();
     const items = JSON.parse(localStorage.getItem('lingua_items')!) as Array<{ id: string }>;
     expect(items.map((item) => item.id).sort()).toEqual(['a', 'b']);
   });

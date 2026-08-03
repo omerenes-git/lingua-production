@@ -295,9 +295,9 @@ async function requestCloudState(): Promise<CloudReadResult> {
   }
 
   if (response.status === 401 || response.status === 403) return { kind: 'unauthorized' };
-  if (response.status === 404) return { kind: 'not-found' };
   if (response.status === 429) return { kind: 'rate-limited' };
-  if (response.status >= 500) return { kind: 'server-error' };
+  // 404 bir okuma/konfigürasyon hatasıdır, "kayıt yok" değil; gerçek "kayıt
+  // yok" durumu yalnızca başarılı 200 yanıtındaki boş dizidir (aşağıda).
   if (!response.ok) return { kind: 'server-error' };
 
   let rows: CloudStateRow[];
@@ -359,13 +359,21 @@ async function reconcileWithCloud(): Promise<InitialResolution> {
   const localChanged = stableSnapshot(merged) !== stableSnapshot(local);
   const cloudChanged = stableSnapshot(merged) !== stableSnapshot(cloudResult.state);
   if (localChanged) writeLocalState(merged);
-  if (cloudChanged && await uploadCloudState(merged)) return localChanged ? 'merged' : 'uploaded';
-  if (localChanged) {
+
+  if (!cloudChanged) {
+    if (!localChanged) return 'unchanged';
     localStorage.setItem(LAST_CLOUD_SYNC_MARKER, cloudResult.updatedAt);
     localStorage.setItem(LOCAL_MUTATION_MARKER, cloudResult.updatedAt);
     return 'merged';
   }
-  return 'unchanged';
+
+  if (await uploadCloudState(merged)) return localChanged ? 'merged' : 'uploaded';
+  // Upload başarısız: birleşmiş veri yerelde korunur (yukarıda yazıldı), ama
+  // senkronizasyon zamanı başarılıymış gibi güncellenmez; bir sonraki
+  // denemede buluta tekrar yüklenmeye çalışılır. localChanged ise 'merged'
+  // dönülür ki sayfa yenilensin ve bellekteki eski durum bu birleşimin
+  // üzerine yazmasın.
+  return localChanged ? 'merged' : 'error';
 }
 
 export async function startSupabaseDataSync(): Promise<() => void> {
