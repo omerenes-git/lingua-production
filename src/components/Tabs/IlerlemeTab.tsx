@@ -3,6 +3,7 @@ import { Activity, AlertTriangle, Award, BookOpen, Check, CheckCircle2, Download
 import { FossilizedError, LearningItem, ProductionPrompt, TargetLanguage } from '../../types';
 import { LingQIntegration } from '../LingQIntegration';
 import { calculateLanguageStreak, getDailyCount } from '../../lib/dailyProgress';
+import { estimateCefrLevel } from '../../lib/proficiency';
 
 interface IlerlemeTabProps {
   currentLanguage: TargetLanguage;
@@ -93,19 +94,7 @@ export const IlerlemeTab: React.FC<IlerlemeTabProps> = ({
     ? Math.round((resolvedErrors.length / langErrors.length) * 100)
     : null;
 
-  const estimatedCefr = useMemo(() => {
-    const evidenceCount = producedItems.length;
-    if (evidenceCount < 5) return { level: 'Yetersiz veri', confidence: 'Düşük', score: null as number | null };
-
-    const averageWords = producedItems.reduce((sum, item) => {
-      return sum + item.targetText.trim().split(/\s+/).filter(Boolean).length;
-    }, 0) / evidenceCount;
-    const independentRatio = independentItems.length / evidenceCount;
-    const score = Math.min(100, Math.round(evidenceCount * 1.5 + averageWords * 4 + independentRatio * 35));
-    const level = score < 25 ? 'A1' : score < 42 ? 'A2' : score < 60 ? 'B1' : score < 78 ? 'B2' : score < 92 ? 'C1' : 'C2';
-    const confidence = evidenceCount >= 30 ? 'Orta' : 'Düşük';
-    return { level, confidence, score };
-  }, [producedItems, independentItems]);
+  const estimatedCefr = useMemo(() => estimateCefrLevel(learningItems, currentLanguage), [learningItems, currentLanguage]);
 
   const handleExportJson = () => {
     const payload = JSON.stringify({ learningItems, fossilizedErrors, dailyHistory: history }, null, 2);
@@ -153,7 +142,7 @@ export const IlerlemeTab: React.FC<IlerlemeTabProps> = ({
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div>
                 <div className="flex items-center gap-2 text-xs font-bold text-indigo-200"><Award className="h-4 w-4" /> Kanıta dayalı uygulama içi tahmin</div>
-                <h2 className="mt-2 text-2xl font-black">Tahmini CEFR: {estimatedCefr.level}</h2>
+                <h2 className="mt-2 text-2xl font-black">Tahmini CEFR: {estimatedCefr.level ?? 'Yetersiz veri'}</h2>
                 <p className="mt-2 max-w-2xl text-xs leading-relaxed text-slate-300">
                   Bu sonuç resmî bir CEFR sınavı değildir. Yalnızca uygulamadaki {producedItems.length} üretilebilir kayıt ve {independentItems.length} bağımsız üretim üzerinden hesaplanır.
                 </p>

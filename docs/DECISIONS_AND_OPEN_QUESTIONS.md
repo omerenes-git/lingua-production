@@ -158,3 +158,36 @@ bu, geçiş sonrası günlük hedef/seri sayaçlarının dile göre sıfırdan
 başlayacağı anlamına gelir. Eski karışık veriye dil atfetmenin güvenilir bir
 yolu olmadığından bu, veri kaybı riskini "sessizce yanlış dile sayma"
 riskine tercih eden bilinçli bir karardır.
+
+## 10. Üret modu artık AI ile sınırsız cümle üretebiliyor; "Otomatik" seviye artık gerçekten otomatik
+
+Kullanıcı geri bildirimi: Üret sekmesindeki `INITIAL_PROMPTS` sabit havuzu
+dil başına yalnızca birkaç cümle içeriyordu (ör. İngilizce için 6); havuz
+tükenince kullanıcı "hep aynı cümleleri görüyorum" izlenimine kapılıyordu.
+Ayrıca "Yoğunluk Seviyesi: Tümü" seçeneği ekranda "Otomatik Seviye Ayarlı"
+yazsa da aslında hiçbir filtreleme yapmıyordu — yeni bir kullanıcı ilk
+kartında doğrudan İleri/IELTS içeriğiyle karşılaşabiliyordu.
+
+İki değişiklik yapıldı:
+
+- **`/api/generate-production-prompts`** (`supabase/functions/lingua-web-api/index.ts`):
+  Gramer Pratiği sekmesindeki `/api/generate-grammar-drills` ile aynı
+  desende, mevcut cümlelerle (`avoidSentences`) ve çözülmemiş hatalarla
+  (`errorTopics`) birlikte AI'dan `ProductionPrompt` biçiminde yeni cümleler
+  ister. `src/lib/generatedPrompts.ts` yanıtı doğrular, eksik alanlı
+  adayları sessizce eler ve normalize edilmiş metne göre tekrarları
+  temizler — "sınırsız" olması yalnızca tekrarların gerçekten süzülmesiyle
+  bir anlam taşır. UretTab'da bu, hem tükenme ekranlarında hem de her an
+  kullanılabilen kalıcı bir "AI ile Sınırsız Yeni Cümle Üret" butonuyla
+  sunulur.
+- **Otomatik seviye artık `src/lib/proficiency.ts`'teki gerçek CEFR
+  tahminine bağlı** (İlerleme sekmesindeki "Tahmini CEFR" kartıyla aynı
+  hesap, tek kaynaktan). Bu, `selectNextPrompt`'un var olan `intensity` sert
+  filtresini **değiştirmez** — onun yerine yeni, isteğe bağlı bir
+  `preferredIntensity` yumuşak tercihi eklendi: eşleşen bir cümle
+  varsa önce o seçilir, yoksa mevcut uygun havuza sessizce geri döner.
+  Böylece küçük sabit havuzda bir kullanıcı asla "sıkışmış" hissetmez
+  (`pool_exhausted`/`awaiting_schedule` zamanlaması değişmez) ama yeni bir
+  öğrenci ilk kartında elinden geldiğince başlangıç seviyesi bir cümle
+  görür. Kasıtlı olarak `selectNextPrompt`'un test edilen sert `intensity`
+  sözleşmesine dokunulmadı.

@@ -13,6 +13,14 @@ export interface SelectPromptArgs {
   now?: Date;
   /** Injectable RNG (0 <= x < 1) so tests can make selection deterministic. */
   random?: () => number;
+  /**
+   * Soft difficulty bias for the "auto" level mode: when at least one
+   * eligible prompt matches this intensity, only those are considered for
+   * this pick. Unlike `intensity`, this never removes content outright — if
+   * nothing eligible matches, selection falls back to the full eligible set,
+   * so it can't cause `pool_exhausted`/`awaiting_schedule` on its own.
+   */
+  preferredIntensity?: IntensityLevel;
 }
 
 export type SelectPromptResult =
@@ -57,7 +65,7 @@ function isDue(prompt: ProductionPrompt, index: Map<string, LearningItem>, now: 
  * re-showing a prompt.
  */
 export function selectNextPrompt(args: SelectPromptArgs): SelectPromptResult {
-  const { prompts, language, domain, intensity, learningItems, now = new Date(), random = Math.random } = args;
+  const { prompts, language, domain, intensity, learningItems, now = new Date(), random = Math.random, preferredIntensity } = args;
   const seenIds = args.seenPromptIds instanceof Set ? args.seenPromptIds : new Set(args.seenPromptIds);
 
   const filtered = prompts.filter(
@@ -81,8 +89,12 @@ export function selectNextPrompt(args: SelectPromptArgs): SelectPromptResult {
   const eligible = unseen.filter((p) => isDue(p, learningIndex, now));
 
   if (eligible.length > 0) {
-    const index = Math.min(eligible.length - 1, Math.floor(random() * eligible.length));
-    return { status: 'ok', prompt: eligible[index] };
+    const preferred = preferredIntensity
+      ? eligible.filter((p) => !p.intensityLevel || p.intensityLevel === preferredIntensity)
+      : [];
+    const pool = preferred.length > 0 ? preferred : eligible;
+    const index = Math.min(pool.length - 1, Math.floor(random() * pool.length));
+    return { status: 'ok', prompt: pool[index] };
   }
 
   let nextDueAt: string | null = null;
