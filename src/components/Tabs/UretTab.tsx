@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   TargetLanguage,
   Domain,
@@ -8,11 +8,15 @@ import {
   AIEvaluationResult,
   ProductionAttempt,
   FSRSRating,
-  LearningItem
+  LearningItem,
+  FossilizedError
 } from '../../types';
 import { decideFinalRating } from '../../lib/engine';
 import { evaluateProduction } from '../../lib/aiService';
+import { callLinguaApi } from '../../lib/linguaApi';
 import { selectNextPrompt, SelectPromptResult } from '../../lib/sentenceSelector';
+import { parseGeneratedPrompts } from '../../lib/generatedPrompts';
+import { cefrToIntensity, DEFAULT_CEFR_LEVEL, estimateCefrLevel } from '../../lib/proficiency';
 import { InteractiveWordDictionary } from '../InteractiveWordDictionary';
 import { VocabularyTooltip } from '../VocabularyTooltip';
 import { GrammarDeepDiveModal } from '../GrammarDeepDiveModal';
@@ -36,32 +40,47 @@ import {
   HelpCircle,
   Brain,
   Clock,
-  PartyPopper
+  PartyPopper,
+  Loader2
 } from 'lucide-react';
 
 interface UretTabProps {
   currentLanguage: TargetLanguage;
   prompts: ProductionPrompt[];
   learningItems: LearningItem[];
+  fossilizedErrors: FossilizedError[];
   seenPromptIds: string[];
   onPromptShown: (promptId: string) => void;
   onRecordAttempt: (attempt: ProductionAttempt) => void;
   onAddLearningItem?: (item: LearningItem) => void;
+  onImportPrompts: (prompts: ProductionPrompt[]) => void;
 }
 
 export const UretTab: React.FC<UretTabProps> = ({
   currentLanguage,
   prompts,
   learningItems,
+  fossilizedErrors,
   seenPromptIds,
   onPromptShown,
   onRecordAttempt,
   onAddLearningItem,
+  onImportPrompts,
 }) => {
   const [selectedDomain, setSelectedDomain] = useState<Domain | 'all'>('all');
   const [selectedIntensity, setSelectedIntensity] = useState<IntensityLevel | 'all'>('all');
   const [currentPrompt, setCurrentPrompt] = useState<ProductionPrompt | null>(null);
   const [selectionState, setSelectionState] = useState<SelectPromptResult | null>(null);
+  const [isGeneratingAi, setIsGeneratingAi] = useState(false);
+  const [aiGenerationStatus, setAiGenerationStatus] = useState<string | null>(null);
+
+  // "Otomatik Seviye Ayarlı" (selectedIntensity === 'all') resolves to a
+  // concrete level derived from real production evidence for this language —
+  // new learners start at beginner/A1 instead of seeing unfiltered content
+  // (which could include advanced/IELTS prompts on their very first card).
+  const cefrEstimate = useMemo(() => estimateCefrLevel(learningItems, currentLanguage), [learningItems, currentLanguage]);
+  const autoIntensity = cefrToIntensity(cefrEstimate.level ?? DEFAULT_CEFR_LEVEL);
+  const effectiveIntensity: IntensityLevel = selectedIntensity === 'all' ? autoIntensity : selectedIntensity;
 
   // Interactive Dictionary Modal state
   const [selectedWord, setSelectedWord] = useState<string | null>(null);
@@ -94,12 +113,18 @@ export const UretTab: React.FC<UretTabProps> = ({
   );
   const seenCountInFilter = availablePrompts.filter((p) => seenPromptIds.includes(p.id)).length;
 
+  // "Otomatik" (selectedIntensity === 'all') never removes content — it only
+  // soft-prefers the learner's current auto-detected level so an easier
+  // sentence is picked first when one is available, without ever narrowing
+  // the pool enough to get the learner stuck (see preferredIntensity below).
+  const preferredIntensity = selectedIntensity === 'all' ? autoIntensity : undefined;
+
   // Latest selection inputs kept in a ref so the mount/filter-change effect
   // below can read fresh values without re-running every time `prompts` or
   // `learningItems` gets a new array reference from unrelated app state
   // changes (that used to yank the user onto a different sentence mid-typing).
-  const selectionInputsRef = useRef({ prompts, learningItems, seenPromptIds, currentLanguage, selectedDomain, selectedIntensity, onPromptShown });
-  selectionInputsRef.current = { prompts, learningItems, seenPromptIds, currentLanguage, selectedDomain, selectedIntensity, onPromptShown };
+  const selectionInputsRef = useRef({ prompts, learningItems, seenPromptIds, currentLanguage, selectedDomain, selectedIntensity, preferredIntensity, onPromptShown });
+  selectionInputsRef.current = { prompts, learningItems, seenPromptIds, currentLanguage, selectedDomain, selectedIntensity, preferredIntensity, onPromptShown };
 
   const pickNext = () => {
     const inputs = selectionInputsRef.current;
@@ -108,6 +133,7 @@ export const UretTab: React.FC<UretTabProps> = ({
       language: inputs.currentLanguage,
       domain: inputs.selectedDomain,
       intensity: inputs.selectedIntensity,
+      preferredIntensity: inputs.preferredIntensity,
       seenPromptIds: inputs.seenPromptIds,
       learningItems: inputs.learningItems,
     });
@@ -246,6 +272,66 @@ export const UretTab: React.FC<UretTabProps> = ({
     pickNext();
   };
 
+  // On-demand, effectively unlimited sentence variety: instead of being
+  // capped by the fixed prompt bank (INITIAL_PROMPTS), ask the AI for fresh
+  // ones tailored to the learner's current level and recent mistakes, add
+  // them to the pool, and jump straight to one. Available any time, not only
+  // when the fixed pool runs out.
+  const handleGenerateWithAi = async () => {
+    setIsGeneratingAi(true);
+    setAiGenerationStatus(null);
+    try {
+      const inputs = selectionInputsRef.current;
+      const languagePrompts = inputs.prompts.filter((p) => p.language === inputs.currentLanguage);
+      const avoidSentences = languagePrompts.map((p) => p.targetReference).slice(-40);
+      const errorTopics = fossilizedErrors
+        .filter((error) => error.language === currentLanguage && !error.resolved)
+        .slice(0, 5)
+        .map((error) => error.errorDescription)
+        .filter(Boolean);
+
+      const payload = await callLinguaApi<{ prompts?: unknown }>('/api/generate-production-prompts', {
+        language: currentLanguage,
+        domain: selectedDomain === 'all' ? undefined : selectedDomain,
+        intensityLevel: effectiveIntensity,
+        cefrLevel: cefrEstimate.level ?? DEFAULT_CEFR_LEVEL,
+        errorTopics,
+        avoidSentences,
+        count: 6,
+      });
+
+      const generated = parseGeneratedPrompts(payload.prompts, {
+        language: currentLanguage,
+        fallbackDomain: selectedDomain === 'all' ? 'general' : selectedDomain,
+        existingTargetTexts: avoidSentences,
+      });
+
+      if (generated.length === 0) {
+        setAiGenerationStatus('AI yeni ve tekrar etmeyen bir cümle üretemedi. Lütfen tekrar deneyin.');
+        return;
+      }
+
+      onImportPrompts(generated);
+      const [firstNew] = generated;
+      setSelectionState({ status: 'ok', prompt: firstNew });
+      setCurrentPrompt(firstNew);
+      setUserAnswer('');
+      setActiveHintLevel(0);
+      setEvaluation(null);
+      setFinalRatingInfo(null);
+      setCorrectionInput('');
+      setCorrectionSuccess(false);
+      onPromptShown(firstNew.id);
+      setAiGenerationStatus(`${generated.length} yeni AI cümlesi eklendi.`);
+    } catch (error) {
+      setAiGenerationStatus(
+        `AI ile yeni cümle üretilemedi: ${error instanceof Error ? error.message : 'Bilinmeyen hata'}.`,
+      );
+    } finally {
+      setIsGeneratingAi(false);
+    }
+  };
+
   const handleCheckCorrection = () => {
     if (!currentPrompt) return;
     const normCorrection = correctionInput.trim().toLowerCase().replace(/[.,!?:;]/g, '');
@@ -263,6 +349,20 @@ export const UretTab: React.FC<UretTabProps> = ({
     setContextSentence(context);
   };
 
+  const aiGenerateButton = (label: string) => (
+    <div className="space-y-2">
+      <button
+        onClick={handleGenerateWithAi}
+        disabled={isGeneratingAi}
+        className="px-4 py-2.5 bg-violet-600 hover:bg-violet-700 disabled:opacity-50 text-white text-xs font-bold rounded-xl shadow-xs inline-flex items-center space-x-2"
+      >
+        {isGeneratingAi ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+        <span>{label}</span>
+      </button>
+      {aiGenerationStatus && <p className="text-xs text-slate-500 max-w-md mx-auto">{aiGenerationStatus}</p>}
+    </div>
+  );
+
   if (!currentPrompt || !selectionState || selectionState.status !== 'ok') {
     if (selectionState?.status === 'awaiting_schedule') {
       const dueDate = new Date(selectionState.nextDueAt);
@@ -275,7 +375,8 @@ export const UretTab: React.FC<UretTabProps> = ({
             {dueDate && Number.isFinite(dueDate.getTime()) ? ` (sıradaki: ${dueDate.toLocaleString('tr-TR')})` : ''}.
             Sessizce aynı cümleyi tekrar göstermek yerine bu turu burada bitiriyoruz.
           </p>
-          <p className="text-xs text-slate-400">Farklı bir alan veya yoğunluk seviyesi seçerek yeni içerik bulabilirsin.</p>
+          <p className="text-xs text-slate-400">Farklı bir alan veya yoğunluk seviyesi seçebilir, ya da AI'dan hemen yeni cümle isteyebilirsin.</p>
+          {aiGenerateButton('AI ile Sınırsız Yeni Cümle Üret')}
         </div>
       );
     }
@@ -287,8 +388,9 @@ export const UretTab: React.FC<UretTabProps> = ({
           <h3 className="text-xl font-bold text-slate-800">Bu Oturumdaki Tüm Cümleleri Tamamladın</h3>
           <p className="text-sm text-slate-500 max-w-md mx-auto">
             Seçili alan/yoğunlukta bu oturumda gösterilecek başka cümle kalmadı; aynı cümle sessizce tekrar
-            gösterilmeyecek. Farklı bir alan seçebilir veya oturumu bitirip daha sonra devam edebilirsin.
+            gösterilmeyecek. Farklı bir alan seçebilir, oturumu bitirebilir veya AI'dan hemen yeni cümle isteyebilirsin.
           </p>
+          {aiGenerateButton('AI ile Sınırsız Yeni Cümle Üret')}
         </div>
       );
     }
@@ -298,8 +400,9 @@ export const UretTab: React.FC<UretTabProps> = ({
         <Sparkles className="w-12 h-12 text-sky-500 mx-auto" />
         <h3 className="text-xl font-bold text-slate-800">Bu Alan ve Dilde Cümle Bulunmadı</h3>
         <p className="text-sm text-slate-500">
-          Lütfen diğer alanları seçin veya LingQ senkronizasyonu ile yeni cümle ekleyin.
+          Lütfen diğer alanları seçin, LingQ senkronizasyonu ile yeni cümle ekleyin veya AI'dan cümle iste.
         </p>
+        {aiGenerateButton('AI ile Cümle Üret')}
       </div>
     );
   }
@@ -463,10 +566,25 @@ export const UretTab: React.FC<UretTabProps> = ({
                   ? 'İleri (Titiz Üslup & Klinik Hassasiyet)'
                   : selectedIntensity === 'intermediate'
                   ? 'Orta (Dengeli Gramer & Yapı)'
-                  : 'Otomatik Seviye Ayarlı'}
+                  : `Otomatik Seviye Ayarlı (Şu an: ${cefrEstimate.level ?? DEFAULT_CEFR_LEVEL} · ${
+                      autoIntensity === 'beginner' ? 'Başlangıç' : autoIntensity === 'intermediate' ? 'Orta' : 'İleri'
+                    })`}
               </strong>
             </span>
           </div>
+        </div>
+
+        <div className="pt-2 border-t border-slate-100 flex items-center justify-between flex-wrap gap-3">
+          <button
+            onClick={handleGenerateWithAi}
+            disabled={isGeneratingAi}
+            className="px-3.5 py-2 bg-violet-600 hover:bg-violet-700 disabled:opacity-50 text-white text-xs font-bold rounded-xl shadow-xs inline-flex items-center space-x-2"
+            title="İstediğin an, tekrar etmeyen yeni bir cümle üretir"
+          >
+            {isGeneratingAi ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+            <span>AI ile Sınırsız Yeni Cümle Üret</span>
+          </button>
+          {aiGenerationStatus && <p className="text-xs text-slate-500">{aiGenerationStatus}</p>}
         </div>
       </div>
 

@@ -253,10 +253,12 @@ export function App() {
             currentLanguage={currentLanguage}
             prompts={prompts}
             learningItems={learningItems}
+            fossilizedErrors={fossilizedErrors}
             seenPromptIds={sessionSeenIds[currentLanguage] || []}
             onPromptShown={handlePromptShown}
             onRecordAttempt={handleRecordAttempt}
             onAddLearningItem={handleAddLearningItem}
+            onImportPrompts={handleImportPrompts}
           />
         )}
         {activeTab === 'gramer_pratigi' && <GramerPratigiTab currentLanguage={currentLanguage} fossilizedErrors={fossilizedErrors} onAddLearningItem={handleAddLearningItem} onMarkErrorResolved={handleResolveFossilizedError} />}

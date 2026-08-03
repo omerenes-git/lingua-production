@@ -187,4 +187,77 @@ describe('selectNextPrompt', () => {
     if (result.status !== 'ok') throw new Error('unreachable');
     expect(result.prompt.id).toBe('a');
   });
+
+  describe('preferredIntensity (soft "auto level" bias, distinct from the hard `intensity` filter)', () => {
+    it('picks a prompt matching preferredIntensity over other eligible ones when intensity is unfiltered (\'all\')', () => {
+      const prompts: ProductionPrompt[] = [
+        makePrompt({ id: 'hard', language: 'en', intensityLevel: 'advanced', targetReference: 'Hard sentence' }),
+        makePrompt({ id: 'easy', language: 'en', intensityLevel: 'beginner', targetReference: 'Easy sentence' }),
+      ];
+      // random() => 0 would pick index 0 of whatever pool is considered; with
+      // no bias that's 'hard' (array order), so this only passes if the
+      // preference actually narrows the pool to the beginner-tagged prompt.
+      const result = selectNextPrompt({
+        prompts,
+        language: 'en',
+        domain: 'all',
+        intensity: 'all',
+        preferredIntensity: 'beginner',
+        seenPromptIds: [],
+        learningItems: [],
+        random: () => 0,
+      });
+      expect(result.status).toBe('ok');
+      if (result.status !== 'ok') throw new Error('unreachable');
+      expect(result.prompt.id).toBe('easy');
+    });
+
+    it('falls back to the full eligible set (never pool_exhausted) when nothing matches preferredIntensity', () => {
+      const prompts: ProductionPrompt[] = [
+        makePrompt({ id: 'a', language: 'en', intensityLevel: 'advanced', targetReference: 'Sentence A' }),
+        makePrompt({ id: 'b', language: 'en', intensityLevel: 'intermediate', targetReference: 'Sentence B' }),
+      ];
+      const result = selectNextPrompt({
+        prompts,
+        language: 'en',
+        domain: 'all',
+        intensity: 'all',
+        preferredIntensity: 'beginner',
+        seenPromptIds: [],
+        learningItems: [],
+      });
+      expect(result.status).toBe('ok');
+    });
+
+    it('does not change how many picks it takes to exhaust the pool compared to no preference at all', () => {
+      const prompts = buildPool('en', 5);
+      const withPreference = new Set<string>();
+      for (let i = 0; i < 5; i += 1) {
+        const result = selectNextPrompt({ prompts, language: 'en', domain: 'all', intensity: 'all', preferredIntensity: 'beginner', seenPromptIds: withPreference, learningItems: [] });
+        expect(result.status).toBe('ok');
+        if (result.status !== 'ok') throw new Error('unreachable');
+        withPreference.add(result.prompt.id);
+      }
+      const exhausted = selectNextPrompt({ prompts, language: 'en', domain: 'all', intensity: 'all', preferredIntensity: 'beginner', seenPromptIds: withPreference, learningItems: [] });
+      expect(exhausted.status).toBe('pool_exhausted');
+    });
+
+    it('is ignored when intensity is already filtered to a concrete level (no double-filtering)', () => {
+      const prompts: ProductionPrompt[] = [
+        makePrompt({ id: 'a', language: 'en', intensityLevel: 'intermediate', targetReference: 'Sentence A' }),
+      ];
+      const result = selectNextPrompt({
+        prompts,
+        language: 'en',
+        domain: 'all',
+        intensity: 'intermediate',
+        preferredIntensity: 'beginner',
+        seenPromptIds: [],
+        learningItems: [],
+      });
+      expect(result.status).toBe('ok');
+      if (result.status !== 'ok') throw new Error('unreachable');
+      expect(result.prompt.id).toBe('a');
+    });
+  });
 });
