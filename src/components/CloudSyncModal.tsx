@@ -60,6 +60,10 @@ export const CloudSyncModal: React.FC<CloudSyncModalProps> = ({
         setError('Oturum bulunamadı. Senkronizasyon için yeniden giriş yap.');
         return;
       }
+      if (resolution === 'error') {
+        setError('Buluta şu anda ulaşılamadı. Verilerin cihazında güvende, birazdan tekrar dene.');
+        return;
+      }
       setLastSyncedAt(getLastSyncedAt());
       if (resolution === 'merged') {
         setNotice('Başka bir cihazdaki verilerle birleştirildi. Uygulama yenileniyor…');

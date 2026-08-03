@@ -17,7 +17,7 @@ import { PwaInstallModal } from './components/PwaInstallModal';
 import { FloatingAssistantChat } from './components/FloatingAssistantChat';
 
 const todayKey = () => new Date().toISOString().slice(0, 10);
-const normalizeText = (value: string) => value.trim().toLocaleLowerCase().replace(/[.,!?;:'“”\"()]/g, '').replace(/\s+/g, ' ');
+const normalizeText = (value: string) => value.trim().toLocaleLowerCase().replace(/[.,!?;:'“”"()]/g, '').replace(/\s+/g, ' ');
 
 function readHistory(): Record<string, number> {
   try { return JSON.parse(localStorage.getItem('lingua_daily_history') || '{}'); } catch { return {}; }
