@@ -2,9 +2,10 @@ name: Build Signed Android APK
 
 on:
   workflow_dispatch:
-  push:
+  pull_request:
     branches:
-      - 'apk-build-20260803'
+      - main
+  push:
     tags:
       - 'android-v*'
 
