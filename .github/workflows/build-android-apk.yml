@@ -1,0 +1,100 @@
+name: Build Android APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/build-android-apk.yml'
+      - 'src/**'
+      - 'public/**'
+      - 'index.html'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'vite.config.ts'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: android-apk-latest
+  cancel-in-progress: true
+
+jobs:
+  build-apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+
+      - name: Install web dependencies
+        run: npm ci
+
+      - name: Install Capacitor build tooling
+        run: npm install --no-save --package-lock=false @capacitor/core@latest @capacitor/cli@latest @capacitor/android@latest
+
+      - name: Test application
+        run: npm test
+
+      - name: Build mobile web bundle
+        run: npm run build
+        env:
+          CAPACITOR_BUILD: 'true'
+
+      - name: Configure Capacitor
+        run: |
+          cat > capacitor.config.json <<'JSON'
+          {
+            "appId": "com.enes.lingua",
+            "appName": "Lingua",
+            "webDir": "dist",
+            "server": {
+              "androidScheme": "https"
+            }
+          }
+          JSON
+          npx cap add android
+          npx cap sync android
+
+      - name: Build debug APK
+        run: |
+          chmod +x android/gradlew
+          cd android
+          ./gradlew assembleDebug --no-daemon
+
+      - name: Prepare APK
+        run: cp android/app/build/outputs/apk/debug/app-debug.apk Lingua-Enes-latest.apk
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Lingua-Enes-APK
+          path: Lingua-Enes-latest.apk
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Publish latest APK release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete apk-latest --repo "$GITHUB_REPOSITORY" --cleanup-tag --yes || true
+          gh release create apk-latest Lingua-Enes-latest.apk \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "Lingua Android APK - Latest" \
+            --notes "Üret modunda AI ile sınırsız cümle üretimi, A1-C2 otomatik seviye ve senkronizasyon güncellemelerini içeren en güncel Android APK."
