@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { getLastSyncedAt, syncNow } from './supabaseDataSync';
+import { CLOUD_DATA_APPLIED_EVENT, getLastSyncedAt, startSupabaseDataSync, syncNow } from './supabaseDataSync';
 import { getValidSession } from './supabaseWeb';
 
 vi.mock('./supabaseWeb', () => ({
@@ -352,4 +352,105 @@ describe('reconcileWithCloud (via syncNow)', () => {
       expect(typeof versions.lingua_items.x?.at).toBe('string');
     },
   );
+});
+
+describe('cloud merges apply in place instead of reloading the page', () => {
+  // A background sync used to call window.location.reload() on every merge,
+  // which wiped in-memory UI state (active tab, in-progress Üret session)
+  // any time it ran mid-session. It must now notify listeners instead.
+  it('a merge during syncNow() never reloads the page and dispatches CLOUD_DATA_APPLIED_EVENT with the merged data', async () => {
+    localStorage.setItem('lingua_items', JSON.stringify([{ id: 'a', targetText: 'local-a' }]));
+    localStorage.setItem(
+      'lingua_sync_versions',
+      JSON.stringify({ lingua_items: { a: { at: '2025-06-01T00:00:00.000Z' } } }),
+    );
+    installFetchMock({
+      get: () =>
+        jsonResponse(200, [
+          {
+            state: {
+              lingua_items: [{ id: 'b', targetText: 'cloud-b' }],
+              lingua_sync_versions: { lingua_items: { b: { at: '2025-06-02T00:00:00.000Z' } } },
+            },
+            updated_at: '2025-06-02T00:00:00.000Z',
+          },
+        ]),
+      post: () => jsonResponse(201),
+    });
+
+    const reloadSpy = vi.fn();
+    Object.defineProperty(window, 'location', { value: { ...window.location, reload: reloadSpy }, writable: true });
+    const events: Array<Record<string, unknown>> = [];
+    const handler = (event: Event) => events.push((event as CustomEvent).detail);
+    window.addEventListener(CLOUD_DATA_APPLIED_EVENT, handler);
+
+    const resolution = await syncNow();
+
+    window.removeEventListener(CLOUD_DATA_APPLIED_EVENT, handler);
+    expect(resolution).toBe('merged');
+    expect(reloadSpy).not.toHaveBeenCalled();
+    expect(events).toHaveLength(1);
+    const items = events[0].lingua_items as Array<{ id: string }>;
+    expect(items.map((item) => item.id).sort()).toEqual(['a', 'b']);
+  });
+
+  it('startSupabaseDataSync() does not reload on its initial sync, even when it merges cloud data', async () => {
+    localStorage.setItem('lingua_items', JSON.stringify([{ id: 'a', targetText: 'local-a' }]));
+    localStorage.setItem(
+      'lingua_sync_versions',
+      JSON.stringify({ lingua_items: { a: { at: '2025-06-01T00:00:00.000Z' } } }),
+    );
+    installFetchMock({
+      get: () =>
+        jsonResponse(200, [
+          {
+            state: {
+              lingua_items: [{ id: 'b', targetText: 'cloud-b' }],
+              lingua_sync_versions: { lingua_items: { b: { at: '2025-06-02T00:00:00.000Z' } } },
+            },
+            updated_at: '2025-06-02T00:00:00.000Z',
+          },
+        ]),
+      post: () => jsonResponse(201),
+    });
+
+    const reloadSpy = vi.fn();
+    Object.defineProperty(window, 'location', { value: { ...window.location, reload: reloadSpy }, writable: true });
+
+    const stop = await startSupabaseDataSync();
+    try {
+      expect(reloadSpy).not.toHaveBeenCalled();
+      const items = JSON.parse(localStorage.getItem('lingua_items')!) as Array<{ id: string }>;
+      expect(items.map((item) => item.id).sort()).toEqual(['a', 'b']);
+    } finally {
+      stop();
+    }
+  });
+
+  it('the ongoing background interval reconciles local changes without ever reloading', async () => {
+    vi.useFakeTimers();
+    try {
+      installFetchMock({ get: () => jsonResponse(200, []), post: () => jsonResponse(201) });
+      const reloadSpy = vi.fn();
+      Object.defineProperty(window, 'location', { value: { ...window.location, reload: reloadSpy }, writable: true });
+
+      const stop = await startSupabaseDataSync();
+      try {
+        // Simulate a local mutation the way App.tsx's useEffect persistence does.
+        localStorage.setItem('lingua_items', JSON.stringify([{ id: 'x', targetText: 'new-answer' }]));
+
+        // Advance past the 2s polling tick that detects the change, the 1.5s
+        // debounce, and a couple more ticks so a merge cycle can complete.
+        await vi.advanceTimersByTimeAsync(2000);
+        await vi.advanceTimersByTimeAsync(1500);
+        await vi.advanceTimersByTimeAsync(2000);
+
+        expect(reloadSpy).not.toHaveBeenCalled();
+      } finally {
+        stop();
+      }
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

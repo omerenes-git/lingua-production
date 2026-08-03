@@ -111,5 +111,50 @@ Bunlar unutulmuş değil, **bilinçli olarak** ilk sürüme dahil edilmemiştir
 ## 6. Terminoloji değişiklik günlüğü
 
 Bu belge ayrıca, DATA_MODEL.md §0 sözlüğünde bir terim değiştiğinde bunun
-neden değiştiğini kaydetmek için kullanılır. Şu an (ilk sürüm) boş —
-ilk terim değişikliğinde buraya eklenir.
+neden değiştiğini kaydetmek için kullanılır. Şu an (ilk sürüm) boş — ilk
+terim değişikliğinde buraya eklenir.
+
+## 7. `CLAUDE.md` "depo durumu" bölümü güncel değil (2026-08-03 tespiti)
+
+`CLAUDE.md`, deponun "yalnızca planlama ve dokümantasyon aşamasında" olduğunu
+ve `apps/mobile`'ın henüz ürüne özgü kod içermeyen stock bir Expo Router
+şablonu olduğunu söylüyor. Bu artık doğru değil:
+
+- Gerçek ürün, kökteki `src/` altında Vite + React ile yazılmış ve
+  Capacitor ile Android APK'ya paketlenen ayrı bir uygulamadır
+  (`.github/workflows/android-apk.yml`, `capacitor.config.json`). "Üret
+  modu" (`UretTab.tsx`), gramer koçu, sohbet, hikâyeler, Supabase bulut
+  senkronizasyonu (`supabaseDataSync.ts`) gibi özellikler zaten bu ağaçta
+  üretimde çalışır durumda ve birçok PR ile geliştirilmiş.
+- `apps/mobile` hâlâ ilk commit'teki (`c1f03aa`) stock Expo Router
+  şablonudur ve gerçek uygulamayla hiçbir bağlantısı yoktur — kullanılmayan,
+  terk edilmiş bir iskelet gibi görünüyor.
+
+Bu çelişki, `claude/fix-production-mode-progression-sync-7sliby` dalındaki
+"Üret modu cümle tekrarı / ilerleme / senkronizasyon" düzeltmeleri sırasında
+fark edildi. Düzeltmeler, gerçekten üretimde olan `src/` ağacına yapıldı.
+`CLAUDE.md`'nin "depo durumu" bölümünün güncellenmesi veya `apps/mobile`'ın
+kapsam dışı bırakılıp bırakılmayacağının netleştirilmesi ayrı bir karar
+gerektiriyor; burada sessizce göz ardı edilmedi.
+
+## 8. Üret modu oturum-görüldü listesi yalnızca yerelde tutuluyor
+
+"Bu oturumda gösterilen cümle kimlikleri" (`lingua_session_seen`), Supabase'e
+senkronize edilen `DATA_KEYS` listesine bilerek eklenmedi. Gerekçe: bu bilgi
+öğrenme verisi değil, cihaza özgü sunum durumudur — bir cihazda görülmüş bir
+cümlenin başka bir cihazda da gizlenmesi beklenmez. Buna karşılık tamamlanan
+cümlelerin FSRS `nextReviewDate`'i (`lingua_items` üzerinden, senkronize
+edilir) gerçek "yakın zamanda tekrar gösterme" korumasını cihazlar arası
+sağlar.
+
+## 9. Günlük sayaç artık dile göre ad alanına ayrılıyor (`lingua_daily_history`)
+
+Önceden `lingua_daily_history` tarih başına tek bir sayaç tutuyordu ve
+İngilizce/Almanca/Sırpça ilerlemesi birbirine karışıyordu. Anahtarlar artık
+`${dil}::${tarih}` biçiminde ad alanına ayrılmıştır (`src/lib/dailyProgress.ts`).
+Eski ad alanı almayan tarih anahtarları **silinmedi** (CLAUDE.md kuralı:
+mevcut kullanıcı verisi silinmez) ama artık hiçbir UI tarafından okunmuyor —
+bu, geçiş sonrası günlük hedef/seri sayaçlarının dile göre sıfırdan
+başlayacağı anlamına gelir. Eski karışık veriye dil atfetmenin güvenilir bir
+yolu olmadığından bu, veri kaybı riskini "sessizce yanlış dile sayma"
+riskine tercih eden bilinçli bir karardır.

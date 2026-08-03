@@ -66,8 +66,7 @@ export const CloudSyncModal: React.FC<CloudSyncModalProps> = ({
       }
       setLastSyncedAt(getLastSyncedAt());
       if (resolution === 'merged') {
-        setNotice('Başka bir cihazdaki verilerle birleştirildi. Uygulama yenileniyor…');
-        window.location.reload();
+        setNotice('Başka bir cihazdaki verilerle birleştirildi ve ekrana yansıtıldı.');
         return;
       }
       setNotice(resolution === 'uploaded' ? 'Verilerin buluta yüklendi.' : 'Zaten güncel, senkronize edilecek değişiklik yok.');

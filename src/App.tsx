@@ -3,6 +3,16 @@ import { TargetLanguage, LearningItem, ProductionPrompt, ProductionAttempt, Foss
 import { INITIAL_PROMPTS, INITIAL_ITEMS } from './data/initialData';
 import { calculateNextMasteryState, scheduleReview } from './lib/engine';
 import { AI_SERVICE_UNAVAILABLE_MARKER } from './lib/aiService';
+import { normalizeSentenceText } from './lib/text';
+import { CLOUD_DATA_APPLIED_EVENT } from './lib/supabaseDataSync';
+import {
+  DAILY_GOAL,
+  crossedDailyGoal,
+  calculateLanguageStreak,
+  getDailyCount,
+  incrementDailyCount,
+  todayKey,
+} from './lib/dailyProgress';
 import { Header } from './components/Header';
 import { BugunTab } from './components/Tabs/BugunTab';
 import { UretTab } from './components/Tabs/UretTab';
@@ -14,25 +24,25 @@ import { IlerlemeTab } from './components/Tabs/IlerlemeTab';
 import { NotificationModal } from './components/NotificationModal';
 import { CloudSyncModal } from './components/CloudSyncModal';
 import { PwaInstallModal } from './components/PwaInstallModal';
+import { SessionCompleteModal } from './components/SessionCompleteModal';
 import { FloatingAssistantChat } from './components/FloatingAssistantChat';
 
-const todayKey = () => new Date().toISOString().slice(0, 10);
-const normalizeText = (value: string) => value.trim().toLocaleLowerCase().replace(/[.,!?;:'“”"()]/g, '').replace(/\s+/g, ' ');
+const normalizeText = normalizeSentenceText;
+
+const SESSION_SEEN_KEY = 'lingua_session_seen';
+const EMPTY_SEEN: Record<TargetLanguage, string[]> = { en: [], de: [], sr: [] };
+
+function readSessionSeen(): Record<TargetLanguage, string[]> {
+  try {
+    const saved = JSON.parse(localStorage.getItem(SESSION_SEEN_KEY) || '{}');
+    return { ...EMPTY_SEEN, ...saved };
+  } catch {
+    return { ...EMPTY_SEEN };
+  }
+}
 
 function readHistory(): Record<string, number> {
   try { return JSON.parse(localStorage.getItem('lingua_daily_history') || '{}'); } catch { return {}; }
-}
-
-function calculateStreak(history: Record<string, number>): number {
-  let streak = 0;
-  const cursor = new Date();
-  while (true) {
-    const key = cursor.toISOString().slice(0, 10);
-    if ((history[key] || 0) <= 0) break;
-    streak += 1;
-    cursor.setDate(cursor.getDate() - 1);
-  }
-  return streak;
 }
 
 export function App() {
@@ -43,9 +53,15 @@ export function App() {
   const [showCloudSyncModal, setShowCloudSyncModal] = useState(false);
   const [showPwaModal, setShowPwaModal] = useState(false);
   const [dailyHistory, setDailyHistory] = useState<Record<string, number>>(readHistory);
+  // Prompt ids already shown during the current practice session, per language.
+  // Kept local-only (not synced to Supabase): "already seen this session" is a
+  // per-device presentation concern, not learning data that should be shared
+  // across devices. See docs/DECISIONS_AND_OPEN_QUESTIONS.md.
+  const [sessionSeenIds, setSessionSeenIds] = useState<Record<TargetLanguage, string[]>>(readSessionSeen);
+  const [sessionCompleteLanguage, setSessionCompleteLanguage] = useState<TargetLanguage | null>(null);
 
-  const dailyGoalProgress = dailyHistory[todayKey()] || 0;
-  const streakCount = useMemo(() => calculateStreak(dailyHistory), [dailyHistory]);
+  const dailyGoalProgress = getDailyCount(dailyHistory, currentLanguage, todayKey());
+  const streakCount = useMemo(() => calculateLanguageStreak(dailyHistory, currentLanguage), [dailyHistory, currentLanguage]);
 
   useEffect(() => {
     document.documentElement.classList.toggle('dark', darkMode);
@@ -66,16 +82,58 @@ export function App() {
   useEffect(() => localStorage.setItem('lingua_items', JSON.stringify(learningItems)), [learningItems]);
   useEffect(() => localStorage.setItem('lingua_fossilized', JSON.stringify(fossilizedErrors)), [fossilizedErrors]);
   useEffect(() => localStorage.setItem('lingua_daily_history', JSON.stringify(dailyHistory)), [dailyHistory]);
+  useEffect(() => localStorage.setItem(SESSION_SEEN_KEY, JSON.stringify(sessionSeenIds)), [sessionSeenIds]);
 
-  const recordCompletedExercise = () => {
+  // A background Supabase sync can merge in data from another device at any
+  // time. It used to force a full page reload to pick that up, which threw
+  // away in-memory UI state (active tab, in-progress Üret session) — now it
+  // notifies this listener instead so state updates in place.
+  useEffect(() => {
+    const handleCloudDataApplied = (event: Event) => {
+      const detail = (event as CustomEvent<Record<string, unknown>>).detail || {};
+      if (Array.isArray(detail.lingua_prompts)) setPrompts(detail.lingua_prompts as ProductionPrompt[]);
+      if (Array.isArray(detail.lingua_items)) setLearningItems(detail.lingua_items as LearningItem[]);
+      if (Array.isArray(detail.lingua_fossilized)) setFossilizedErrors(detail.lingua_fossilized as FossilizedError[]);
+      if (detail.lingua_daily_history && typeof detail.lingua_daily_history === 'object') {
+        setDailyHistory(detail.lingua_daily_history as Record<string, number>);
+      }
+      if (typeof detail.lingua_dark_mode === 'boolean') setDarkMode(detail.lingua_dark_mode);
+    };
+    window.addEventListener(CLOUD_DATA_APPLIED_EVENT, handleCloudDataApplied);
+    return () => window.removeEventListener(CLOUD_DATA_APPLIED_EVENT, handleCloudDataApplied);
+  }, []);
+
+  const recordCompletedExercise = (language: TargetLanguage) => {
     const key = todayKey();
-    setDailyHistory((previous) => ({ ...previous, [key]: (previous[key] || 0) + 1 }));
+    const before = getDailyCount(dailyHistory, language, key);
+    const updated = incrementDailyCount(dailyHistory, language, key);
+    setDailyHistory(updated);
+    if (crossedDailyGoal(before, getDailyCount(updated, language, key))) {
+      setSessionCompleteLanguage(language);
+    }
+  };
+
+  const handlePromptShown = (promptId: string) => {
+    setSessionSeenIds((previous) => {
+      const existing = previous[currentLanguage] || [];
+      if (existing.includes(promptId)) return previous;
+      return { ...previous, [currentLanguage]: [...existing, promptId] };
+    });
+  };
+
+  const handleContinueSession = () => setSessionCompleteLanguage(null);
+
+  const handleEndSession = () => {
+    const language = sessionCompleteLanguage ?? currentLanguage;
+    setSessionCompleteLanguage(null);
+    setSessionSeenIds((previous) => ({ ...previous, [language]: [] }));
+    setActiveTab('bugun');
   };
 
   const handleRecordAttempt = (attempt: ProductionAttempt) => {
     if (attempt.evaluation.explanationTr.startsWith(AI_SERVICE_UNAVAILABLE_MARKER)) return;
 
-    recordCompletedExercise();
+    recordCompletedExercise(attempt.language);
     const matchedPrompt = prompts.find((prompt) => prompt.id === attempt.promptId);
 
     if (matchedPrompt) {
@@ -162,17 +220,20 @@ export function App() {
     return [...items.filter((item) => !ids.has(item.id)), ...previous];
   });
   const handleResolveFossilizedError = (id: string) => {
+    const target = fossilizedErrors.find((error) => error.id === id);
     setFossilizedErrors((previous) => previous.map((error) => error.id === id ? { ...error, resolved: true } : error));
-    recordCompletedExercise();
+    recordCompletedExercise(target?.language ?? currentLanguage);
   };
 
   const handleClearData = () => {
     if (!confirm('Tüm kişisel pratik verilerini sıfırlamak istediğinize emin misiniz?')) return;
-    ['lingua_prompts', 'lingua_items', 'lingua_fossilized', 'lingua_daily_history'].forEach((key) => localStorage.removeItem(key));
+    ['lingua_prompts', 'lingua_items', 'lingua_fossilized', 'lingua_daily_history', SESSION_SEEN_KEY].forEach((key) => localStorage.removeItem(key));
     setPrompts(INITIAL_PROMPTS);
     setLearningItems(INITIAL_ITEMS);
     setFossilizedErrors([]);
     setDailyHistory({});
+    setSessionSeenIds({ ...EMPTY_SEEN });
+    setSessionCompleteLanguage(null);
   };
 
   const now = Date.now();
@@ -187,7 +248,17 @@ export function App() {
       <Header currentLanguage={currentLanguage} onLanguageChange={setCurrentLanguage} streakCount={streakCount} dueCount={dueCount} activeCount={activeCount} passiveCount={passiveCount} activeTab={activeTab} onTabChange={setActiveTab} darkMode={darkMode} onToggleDarkMode={() => setDarkMode(!darkMode)} onOpenNotifications={() => setShowNotificationModal(true)} onOpenCloudSync={() => setShowCloudSyncModal(true)} onOpenPwaModal={() => setShowPwaModal(true)} />
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
         {activeTab === 'bugun' && <BugunTab currentLanguage={currentLanguage} learningItems={learningItems} fossilizedErrors={fossilizedErrors} onNavigateTab={setActiveTab} />}
-        {activeTab === 'uret' && <UretTab currentLanguage={currentLanguage} prompts={prompts} onRecordAttempt={handleRecordAttempt} onAddLearningItem={handleAddLearningItem} />}
+        {activeTab === 'uret' && (
+          <UretTab
+            currentLanguage={currentLanguage}
+            prompts={prompts}
+            learningItems={learningItems}
+            seenPromptIds={sessionSeenIds[currentLanguage] || []}
+            onPromptShown={handlePromptShown}
+            onRecordAttempt={handleRecordAttempt}
+            onAddLearningItem={handleAddLearningItem}
+          />
+        )}
         {activeTab === 'gramer_pratigi' && <GramerPratigiTab currentLanguage={currentLanguage} fossilizedErrors={fossilizedErrors} onAddLearningItem={handleAddLearningItem} onMarkErrorResolved={handleResolveFossilizedError} />}
         {activeTab === 'nasil_soylerim' && <NasilSoylerimTab currentLanguage={currentLanguage} onAddLearningItem={handleAddLearningItem} />}
         {activeTab === 'sohbet' && <SohbetTab currentLanguage={currentLanguage} />}
@@ -204,6 +275,12 @@ export function App() {
         </div>
       </footer>
       <PwaInstallModal isOpen={showPwaModal} onClose={() => setShowPwaModal(false)} />
+      <SessionCompleteModal
+        language={sessionCompleteLanguage}
+        dailyGoal={DAILY_GOAL}
+        onContinue={handleContinueSession}
+        onEndSession={handleEndSession}
+      />
       <FloatingAssistantChat currentLanguage={currentLanguage} onLanguageChange={setCurrentLanguage} activeTab={activeTab} onTabChange={setActiveTab} darkMode={darkMode} onToggleDarkMode={setDarkMode} onOpenNotifications={() => setShowNotificationModal(true)} onOpenCloudSync={() => setShowCloudSyncModal(true)} />
     </div>
   );
