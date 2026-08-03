@@ -33,6 +33,17 @@ interface CloudStateRow {
   updated_at: string;
 }
 
+// "Kayıt yok" ile "okuma başarısız" ayrı dallardır; aksi halde bir ağ/sunucu
+// hatası kayıt yok sanılıp yerel veri buluttaki kaydın üzerine yazabilir.
+type CloudReadResult =
+  | { kind: 'found'; state: Record<string, unknown>; updatedAt: string }
+  | { kind: 'not-found' }
+  | { kind: 'no-session' }
+  | { kind: 'unauthorized' }
+  | { kind: 'rate-limited' }
+  | { kind: 'server-error' }
+  | { kind: 'network-error' };
+
 function nowIso(): string {
   return new Date().toISOString();
 }
@@ -174,6 +185,10 @@ function stampDataChanges(previous: Record<string, unknown>, current: Record<str
 }
 
 function chooseSide(localVersion: VersionEntry | undefined, cloudVersion: VersionEntry | undefined, localFallback: string, cloudFallback: string): 'local' | 'cloud' {
+  // Bir taraf bu kaydı hiç bilmiyorsa (versiyonu yok), diğer tarafın genel
+  // anlık görüntü zamanı daha yeni diye kayıp sanılıp kayıt silinmemeli.
+  if (localVersion && !cloudVersion) return 'local';
+  if (cloudVersion && !localVersion) return 'cloud';
   const localTime = parseTime(localVersion?.at) || parseTime(localFallback);
   const cloudTime = parseTime(cloudVersion?.at) || parseTime(cloudFallback);
   return cloudTime > localTime ? 'cloud' : 'local';
@@ -266,60 +281,88 @@ export function removeSyncedLocalValue(key: SyncKey): void {
   markLocalDataChanged();
 }
 
-async function requestCloudState(): Promise<CloudStateRow | null> {
+async function requestCloudState(): Promise<CloudReadResult> {
   const session = await getValidSession();
-  if (!session) return null;
-  const response = await fetch(`${SUPABASE_URL}/rest/v1/app_state?select=state,updated_at&user_id=eq.${encodeURIComponent(session.user.id)}&limit=1`, {
-    headers: { apikey: SUPABASE_PUBLISHABLE_KEY, Authorization: `Bearer ${session.access_token}`, Accept: 'application/json' },
-  });
-  if (!response.ok) return null;
-  const rows = (await response.json()) as CloudStateRow[];
-  return rows[0] ?? null;
+  if (!session) return { kind: 'no-session' };
+
+  let response: Response;
+  try {
+    response = await fetch(`${SUPABASE_URL}/rest/v1/app_state?select=state,updated_at&user_id=eq.${encodeURIComponent(session.user.id)}&limit=1`, {
+      headers: { apikey: SUPABASE_PUBLISHABLE_KEY, Authorization: `Bearer ${session.access_token}`, Accept: 'application/json' },
+    });
+  } catch {
+    return { kind: 'network-error' };
+  }
+
+  if (response.status === 401 || response.status === 403) return { kind: 'unauthorized' };
+  if (response.status === 404) return { kind: 'not-found' };
+  if (response.status === 429) return { kind: 'rate-limited' };
+  if (response.status >= 500) return { kind: 'server-error' };
+  if (!response.ok) return { kind: 'server-error' };
+
+  let rows: CloudStateRow[];
+  try {
+    rows = (await response.json()) as CloudStateRow[];
+  } catch {
+    return { kind: 'network-error' };
+  }
+
+  const row = rows[0];
+  if (!row?.state) return { kind: 'not-found' };
+  return { kind: 'found', state: row.state, updatedAt: row.updated_at };
 }
 
 async function uploadCloudState(state = readLocalState()): Promise<boolean> {
   const session = await getValidSession();
   if (!session) return false;
   const uploadedAt = nowIso();
-  const response = await fetch(`${SUPABASE_URL}/rest/v1/app_state?on_conflict=user_id`, {
-    method: 'POST',
-    headers: {
-      apikey: SUPABASE_PUBLISHABLE_KEY,
-      Authorization: `Bearer ${session.access_token}`,
-      'Content-Type': 'application/json',
-      Prefer: 'resolution=merge-duplicates,return=minimal',
-    },
-    body: JSON.stringify({ user_id: session.user.id, state, updated_at: uploadedAt }),
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${SUPABASE_URL}/rest/v1/app_state?on_conflict=user_id`, {
+      method: 'POST',
+      headers: {
+        apikey: SUPABASE_PUBLISHABLE_KEY,
+        Authorization: `Bearer ${session.access_token}`,
+        'Content-Type': 'application/json',
+        Prefer: 'resolution=merge-duplicates,return=minimal',
+      },
+      body: JSON.stringify({ user_id: session.user.id, state, updated_at: uploadedAt }),
+    });
+  } catch {
+    return false;
+  }
   if (!response.ok) return false;
   localStorage.setItem(LAST_CLOUD_SYNC_MARKER, uploadedAt);
   localStorage.setItem(LOCAL_MUTATION_MARKER, uploadedAt);
   return true;
 }
 
-type InitialResolution = 'merged' | 'uploaded' | 'unchanged' | 'no-session';
+type InitialResolution = 'merged' | 'uploaded' | 'unchanged' | 'no-session' | 'error';
 
 async function reconcileWithCloud(): Promise<InitialResolution> {
-  const session = await getValidSession();
-  if (!session) return 'no-session';
-  const cloudRow = await requestCloudState();
+  const cloudResult = await requestCloudState();
+
+  if (cloudResult.kind === 'no-session') return 'no-session';
+  // Okuma başarısız: hiçbir şey yükleme/silme, bir sonraki senkronizasyonda tekrar dene.
+  if (cloudResult.kind !== 'found' && cloudResult.kind !== 'not-found') return 'error';
+
   const local = readLocalState();
   const localFallback = localStorage.getItem(LOCAL_MUTATION_MARKER) || localStorage.getItem(LAST_CLOUD_SYNC_MARKER) || nowIso();
 
-  if (!cloudRow?.state) {
+  if (cloudResult.kind === 'not-found') {
     const initialized = { ...local, [VERSION_KEY]: bootstrapVersions(local, localFallback) };
     writeLocalState(initialized);
     return await uploadCloudState(initialized) ? 'uploaded' : 'unchanged';
   }
 
-  const merged = mergeStates(local, cloudRow.state, localFallback, cloudRow.updated_at);
+  const merged = mergeStates(local, cloudResult.state, localFallback, cloudResult.updatedAt);
   const localChanged = stableSnapshot(merged) !== stableSnapshot(local);
-  const cloudChanged = stableSnapshot(merged) !== stableSnapshot(cloudRow.state);
+  const cloudChanged = stableSnapshot(merged) !== stableSnapshot(cloudResult.state);
   if (localChanged) writeLocalState(merged);
   if (cloudChanged && await uploadCloudState(merged)) return localChanged ? 'merged' : 'uploaded';
   if (localChanged) {
-    localStorage.setItem(LAST_CLOUD_SYNC_MARKER, cloudRow.updated_at);
-    localStorage.setItem(LOCAL_MUTATION_MARKER, cloudRow.updated_at);
+    localStorage.setItem(LAST_CLOUD_SYNC_MARKER, cloudResult.updatedAt);
+    localStorage.setItem(LOCAL_MUTATION_MARKER, cloudResult.updatedAt);
     return 'merged';
   }
   return 'unchanged';
