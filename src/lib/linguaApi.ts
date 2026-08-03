@@ -2,6 +2,8 @@ import { AUTH_REQUIRED_EVENT, clearSession, getValidSession } from './supabaseWe
 
 const SUPABASE_URL = 'https://nqmmlhrkhafwrfhwljdp.supabase.co';
 const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_WopUD0nNEX6VwqJzIlNEwQ_DaiBQZyp';
+const LINGUA_WEB_API_URL = `${SUPABASE_URL}/functions/v1/lingua-web-api`;
+const PRODUCTION_PROMPTS_API_URL = `${SUPABASE_URL}/functions/v1/generate-production-prompts`;
 
 interface ApiErrorBody {
   error?: string;
@@ -28,13 +30,13 @@ export async function callLinguaApi<TResponse>(action: string, payload: unknown)
     throw new Error('Oturum süresi doldu. Yeniden giriş yapın.');
   }
 
-  const functionSlug = action === '/api/generate-production-prompts'
-    ? 'generate-production-prompts'
-    : 'lingua-web-api';
+  const endpoint = action === '/api/generate-production-prompts'
+    ? PRODUCTION_PROMPTS_API_URL
+    : LINGUA_WEB_API_URL;
 
   let response: Response;
   try {
-    response = await fetch(`${SUPABASE_URL}/functions/v1/${functionSlug}`, {
+    response = await fetch(endpoint, {
       method: 'POST',
       headers: {
         apikey: SUPABASE_PUBLISHABLE_KEY,
