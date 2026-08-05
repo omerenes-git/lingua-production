@@ -60,7 +60,6 @@ export function App() {
   const [sessionSeenIds, setSessionSeenIds] = useState<Record<TargetLanguage, string[]>>(readSessionSeen);
   const [sessionCompleteLanguage, setSessionCompleteLanguage] = useState<TargetLanguage | null>(null);
 
-  const dailyGoalProgress = getDailyCount(dailyHistory, currentLanguage, todayKey());
   const streakCount = useMemo(() => calculateLanguageStreak(dailyHistory, currentLanguage), [dailyHistory, currentLanguage]);
 
   useEffect(() => {
@@ -243,7 +242,7 @@ export function App() {
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex flex-col selection:bg-sky-100 selection:text-sky-900 transition-colors">
-      <NotificationModal isOpen={showNotificationModal} onClose={() => setShowNotificationModal(false)} dueCount={dueCount} currentLanguage={currentLanguage} dailyGoalProgress={dailyGoalProgress} />
+      <NotificationModal isOpen={showNotificationModal} onClose={() => setShowNotificationModal(false)} dueCount={dueCount} />
       <CloudSyncModal isOpen={showCloudSyncModal} onClose={() => setShowCloudSyncModal(false)} itemCount={learningItems.length} errorCount={fossilizedErrors.length} />
       <Header currentLanguage={currentLanguage} onLanguageChange={setCurrentLanguage} streakCount={streakCount} dueCount={dueCount} activeCount={activeCount} passiveCount={passiveCount} activeTab={activeTab} onTabChange={setActiveTab} darkMode={darkMode} onToggleDarkMode={() => setDarkMode(!darkMode)} onOpenNotifications={() => setShowNotificationModal(true)} onOpenCloudSync={() => setShowCloudSyncModal(true)} onOpenPwaModal={() => setShowPwaModal(true)} />
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
@@ -265,7 +264,7 @@ export function App() {
         {activeTab === 'nasil_soylerim' && <NasilSoylerimTab currentLanguage={currentLanguage} onAddLearningItem={handleAddLearningItem} />}
         {activeTab === 'sohbet' && <SohbetTab currentLanguage={currentLanguage} />}
         {activeTab === 'hikayeler' && <HikayelerTab currentLanguage={currentLanguage} onAddLearningItem={handleAddLearningItem} />}
-        {activeTab === 'ilerleme' && <IlerlemeTab currentLanguage={currentLanguage} learningItems={learningItems} fossilizedErrors={fossilizedErrors} onResolveFossilizedError={handleResolveFossilizedError} onClearData={handleClearData} onImportPrompts={handleImportPrompts} onAddLearningItems={handleAddLearningItems} />}
+        {activeTab === 'ilerleme' && <IlerlemeTab currentLanguage={currentLanguage} learningItems={learningItems} fossilizedErrors={fossilizedErrors} dailyHistory={dailyHistory} onResolveFossilizedError={handleResolveFossilizedError} onClearData={handleClearData} onImportPrompts={handleImportPrompts} onAddLearningItems={handleAddLearningItems} />}
       </main>
       <footer className="bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 py-4 mt-auto transition-colors pb-16 sm:pb-4">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 flex-wrap gap-2">

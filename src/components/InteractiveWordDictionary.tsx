@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { TargetLanguage, LearningItem } from '../types';
-import { Volume2, Plus, Check, Search, BookOpen, ExternalLink, Sparkles, X, Brain } from 'lucide-react';
+import { Volume2, Plus, Check, BookOpen, X, Brain } from 'lucide-react';
 import { ContextMnemonicModal } from './ContextMnemonicModal';
 
 interface WordLookupModalProps {

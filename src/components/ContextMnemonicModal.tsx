@@ -7,10 +7,6 @@ import {
   Volume2, 
   Layers, 
   GitFork, 
-  BookOpen, 
-  Image as ImageIcon, 
-  Check, 
-  ArrowRight,
   Zap,
   Lightbulb
 } from 'lucide-react';

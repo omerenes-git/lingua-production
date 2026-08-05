@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Activity, AlertTriangle, Award, BookOpen, Check, CheckCircle2, Download, FileText, HardDrive, ShieldCheck } from 'lucide-react';
+import { Activity, AlertTriangle, Award, Check, Download, FileText, HardDrive, ShieldCheck } from 'lucide-react';
 import { FossilizedError, LearningItem, ProductionPrompt, TargetLanguage } from '../../types';
 import { LingQIntegration } from '../LingQIntegration';
 import { calculateLanguageStreak, getDailyCount } from '../../lib/dailyProgress';
@@ -9,6 +9,7 @@ interface IlerlemeTabProps {
   currentLanguage: TargetLanguage;
   learningItems: LearningItem[];
   fossilizedErrors: FossilizedError[];
+  dailyHistory: Record<string, number>;
   onResolveFossilizedError: (id: string) => void;
   onClearData: () => void;
   onImportPrompts?: (prompts: ProductionPrompt[]) => void;
@@ -22,15 +23,6 @@ const languageNames: Record<TargetLanguage, string> = {
   de: 'Almanca',
   sr: 'Sırpça',
 };
-
-function readDailyHistory(): Record<string, number> {
-  try {
-    const parsed = JSON.parse(localStorage.getItem('lingua_daily_history') || '{}');
-    return parsed && typeof parsed === 'object' ? parsed : {};
-  } catch {
-    return {};
-  }
-}
 
 function dateKey(date: Date): string {
   return date.toISOString().slice(0, 10);
@@ -54,13 +46,14 @@ export const IlerlemeTab: React.FC<IlerlemeTabProps> = ({
   currentLanguage,
   learningItems,
   fossilizedErrors,
+  dailyHistory,
   onResolveFossilizedError,
   onClearData,
   onImportPrompts = () => undefined,
   onAddLearningItems = () => undefined,
 }) => {
   const [activeSubTab, setActiveSubTab] = useState<SubTab>('overview');
-  const history = readDailyHistory();
+  const history = dailyHistory;
   const langItems = learningItems.filter((item) => item.language === currentLanguage);
   const langErrors = fossilizedErrors.filter((error) => error.language === currentLanguage);
   const resolvedErrors = langErrors.filter((error) => error.resolved);
