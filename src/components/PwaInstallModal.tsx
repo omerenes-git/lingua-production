@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Smartphone, Tablet, Share, PlusSquare, MoreVertical, Copy, Check, Globe, Cloud, X, Sparkles, Download } from 'lucide-react';
+import { Smartphone, Share, PlusSquare, MoreVertical, Copy, Check, Globe, Cloud, X, Sparkles, Download } from 'lucide-react';
 
 interface PwaInstallModalProps {
   isOpen: boolean;

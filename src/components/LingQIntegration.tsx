@@ -62,11 +62,14 @@ export const LingQIntegration: React.FC<LingQIntegrationProps> = ({
     };
   }, [currentLanguage, learningItems]);
 
+  // Yalnızca dil değiştiğinde yerel görünüme dön; learningItems güncellenince
+  // (örn. başarılı senkron sonrası import) başarı state'ini geri alma.
   useEffect(() => {
     setStats(localStats);
     setIsConnected(false);
     setMessage(null);
-  }, [currentLanguage, localStats]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentLanguage]);
 
   const importTargetWords = (words: TargetWord[]) => {
     const existing = new Set(

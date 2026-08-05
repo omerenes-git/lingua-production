@@ -1,13 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { TargetLanguage } from '../types';
-import { Bell, BellRing, Clock, CheckCircle2, ShieldCheck, Sparkles, X, Volume2, AlertCircle } from 'lucide-react';
+import { Bell, BellRing, Clock, CheckCircle2, ShieldCheck, Sparkles, X, AlertCircle } from 'lucide-react';
 
 interface NotificationModalProps {
   isOpen: boolean;
   onClose: () => void;
   dueCount: number;
-  currentLanguage: TargetLanguage;
-  dailyGoalProgress: number;
 }
 
 interface AppNotification {
@@ -23,8 +20,6 @@ export const NotificationModal: React.FC<NotificationModalProps> = ({
   isOpen,
   onClose,
   dueCount,
-  currentLanguage,
-  dailyGoalProgress,
 }) => {
   const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>('default');
   const [reminderTime, setReminderTime] = useState<string>('20:00');

@@ -117,11 +117,17 @@ export class ErrorBoundary extends Component<Props, State> {
   };
 
   private handleResetCache = () => {
+    if (!window.confirm('Tüm yerel veriler silinecek ve uygulama yeniden yüklenecek. Devam edilsin mi?')) {
+      return;
+    }
     try {
       localStorage.removeItem('lingua_items');
       localStorage.removeItem('lingua_fossilized');
       localStorage.removeItem('lingua_prompts');
       localStorage.removeItem('lingua_daily_history');
+      // Versiyon/tombstone haritasını da temizle; aksi halde sync merge'i
+      // silinen kayıtları bulut tarafında kalıcı olarak küçültebilir.
+      localStorage.removeItem('lingua_sync_versions');
     } catch (e) {
       console.error('Failed to clear cache:', e);
     }

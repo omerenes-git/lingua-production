@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { TargetLanguage, Persona, ChatMessage } from '../../types';
 import { INITIAL_PERSONAS } from '../../data/initialData';
 import { sendChatMessage } from '../../lib/aiService';
@@ -29,7 +29,7 @@ interface PersonaRolePreset extends Persona {
 const nowLabel = () => new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
 export const SohbetTab: React.FC<SohbetTabProps> = ({ currentLanguage }) => {
-  const personaPresets: PersonaRolePreset[] = [
+  const personaPresets = useMemo<PersonaRolePreset[]>(() => [
     ...INITIAL_PERSONAS.map((persona) => ({
       ...persona,
       systemPrompt:
@@ -67,9 +67,12 @@ export const SohbetTab: React.FC<SohbetTabProps> = ({ currentLanguage }) => {
       },
       systemPrompt: `You are a helpful language-learning chatbot in ${currentLanguage}. Adapt to the learner's level.`,
     },
-  ];
+  ], [currentLanguage]);
 
-  const availablePersonas = personaPresets.filter((persona) => persona.languages.includes(currentLanguage));
+  const availablePersonas = useMemo(
+    () => personaPresets.filter((persona) => persona.languages.includes(currentLanguage)),
+    [personaPresets, currentLanguage],
+  );
   const defaultPersona = availablePersonas[0] || personaPresets[0];
   const [selectedPersona, setSelectedPersona] = useState<PersonaRolePreset>(defaultPersona);
   const [customPromptText, setCustomPromptText] = useState(defaultPersona.systemPrompt);
@@ -107,7 +110,7 @@ export const SohbetTab: React.FC<SohbetTabProps> = ({ currentLanguage }) => {
       },
     ]);
     setShowTranslations({});
-  }, [currentLanguage]);
+  }, [currentLanguage, availablePersonas, personaPresets]);
 
   const resetThread = (persona = selectedPersona) => {
     setMessages([
