@@ -68,6 +68,23 @@ export interface ProductionAttempt {
   createdAt: string;
 }
 
+/**
+ * Durable presentation/completion history for one exact production prompt.
+ * Unlike the per-device session list, this is learning data and is synced so
+ * an already completed sentence is not served as "new" on another device.
+ */
+export interface PromptHistoryEntry {
+  promptId: string;
+  language: TargetLanguage;
+  shownCount: number;
+  lastShownAt: string;
+  completedCount: number;
+  lastCompletedAt?: string;
+  lastRating?: FSRSRating;
+}
+
+export type PromptHistory = Record<string, PromptHistoryEntry>;
+
 export interface LearningItem {
   id: string;
   language: TargetLanguage;

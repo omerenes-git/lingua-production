@@ -58,6 +58,10 @@ function readSessionSeen(): Record<string, string[]> {
   return JSON.parse(localStorage.getItem('lingua_session_seen') || '{}');
 }
 
+function readPromptHistory(): Record<string, { shownCount: number; completedCount: number }> {
+  return JSON.parse(localStorage.getItem('lingua_prompt_history') || '{}');
+}
+
 beforeEach(() => {
   localStorage.clear();
   sessionStorage.clear();
@@ -105,6 +109,21 @@ describe('Üret session flow (real component state + localStorage persistence)',
     await submitOneAnswer(user, 'Second answer');
     const afterSecond = readDailyHistory();
     expect(afterSecond[key!]).toBe(2);
+  });
+
+  it('locks a completed answer against duplicate submission and persists its exact-prompt history', async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await goToUretTab(user);
+
+    await submitOneAnswer(user, 'Only once');
+    const savedButton = screen.getByRole('button', { name: 'Bu Cevap Kaydedildi' });
+    expect(savedButton).toBeDisabled();
+    expect(Object.values(readDailyHistory())).toEqual([1]);
+
+    const entries = Object.values(readPromptHistory());
+    expect(entries).toHaveLength(1);
+    expect(entries[0]).toMatchObject({ shownCount: 1, completedCount: 1 });
   });
 
   it('does not repeat a prompt id within the same session across several submissions', async () => {

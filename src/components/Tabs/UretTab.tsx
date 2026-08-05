@@ -9,7 +9,8 @@ import {
   ProductionAttempt,
   FSRSRating,
   LearningItem,
-  FossilizedError
+  FossilizedError,
+  PromptHistory
 } from '../../types';
 import { decideFinalRating } from '../../lib/engine';
 import { evaluateProduction } from '../../lib/aiService';
@@ -50,6 +51,7 @@ interface UretTabProps {
   learningItems: LearningItem[];
   fossilizedErrors: FossilizedError[];
   seenPromptIds: string[];
+  promptHistory: PromptHistory;
   onPromptShown: (promptId: string) => void;
   onRecordAttempt: (attempt: ProductionAttempt) => void;
   onAddLearningItem?: (item: LearningItem) => void;
@@ -62,6 +64,7 @@ export const UretTab: React.FC<UretTabProps> = ({
   learningItems,
   fossilizedErrors,
   seenPromptIds,
+  promptHistory,
   onPromptShown,
   onRecordAttempt,
   onAddLearningItem,
@@ -94,6 +97,7 @@ export const UretTab: React.FC<UretTabProps> = ({
   const [isEvaluating, setIsEvaluating] = useState(false);
   const [evaluation, setEvaluation] = useState<AIEvaluationResult | null>(null);
   const [finalRatingInfo, setFinalRatingInfo] = useState<{ rating: FSRSRating; isFossilized: boolean; reasonTr: string } | null>(null);
+  const submissionInFlightRef = useRef(false);
 
   // Self-correction state
   const [correctionInput, setCorrectionInput] = useState('');
@@ -123,8 +127,8 @@ export const UretTab: React.FC<UretTabProps> = ({
   // below can read fresh values without re-running every time `prompts` or
   // `learningItems` gets a new array reference from unrelated app state
   // changes (that used to yank the user onto a different sentence mid-typing).
-  const selectionInputsRef = useRef({ prompts, learningItems, seenPromptIds, currentLanguage, selectedDomain, selectedIntensity, preferredIntensity, onPromptShown });
-  selectionInputsRef.current = { prompts, learningItems, seenPromptIds, currentLanguage, selectedDomain, selectedIntensity, preferredIntensity, onPromptShown };
+  const selectionInputsRef = useRef({ prompts, learningItems, promptHistory, seenPromptIds, currentLanguage, selectedDomain, selectedIntensity, preferredIntensity, onPromptShown });
+  selectionInputsRef.current = { prompts, learningItems, promptHistory, seenPromptIds, currentLanguage, selectedDomain, selectedIntensity, preferredIntensity, onPromptShown };
 
   const pickNext = () => {
     const inputs = selectionInputsRef.current;
@@ -136,6 +140,7 @@ export const UretTab: React.FC<UretTabProps> = ({
       preferredIntensity: inputs.preferredIntensity,
       seenPromptIds: inputs.seenPromptIds,
       learningItems: inputs.learningItems,
+      promptHistory: inputs.promptHistory,
     });
     setSelectionState(result);
     setCurrentPrompt(result.status === 'ok' ? result.prompt : null);
@@ -217,55 +222,53 @@ export const UretTab: React.FC<UretTabProps> = ({
   };
 
   const handleSubmit = async () => {
-    if (!userAnswer.trim() || !currentPrompt) return;
+    if (!userAnswer.trim() || !currentPrompt || evaluation || submissionInFlightRef.current) return;
 
+    submissionInFlightRef.current = true;
     setIsEvaluating(true);
     const startTime = Date.now();
+    try {
+      const evalResult = await evaluateProduction({
+        language: currentLanguage,
+        turkishPrompt: currentPrompt.turkishSentence,
+        targetReference: currentPrompt.targetReference,
+        userAnswer: userAnswer.trim(),
+        hintsUsedCount: activeHintLevel,
+        intensityLevel: selectedIntensity === 'all' ? (currentPrompt.intensityLevel || 'intermediate') : selectedIntensity,
+      });
 
-    // 1. Get AI Evaluation (via backend or fallback)
-    const evalResult = await evaluateProduction({
-      language: currentLanguage,
-      turkishPrompt: currentPrompt.turkishSentence,
-      targetReference: currentPrompt.targetReference,
-      userAnswer: userAnswer.trim(),
-      hintsUsedCount: activeHintLevel,
-      intensityLevel: selectedIntensity === 'all' ? (currentPrompt.intensityLevel || 'intermediate') : selectedIntensity,
-    });
+      const responseTimeMs = Date.now() - startTime;
+      const decision = decideFinalRating({
+        aiResult: evalResult,
+        maxHintLevelUsed: activeHintLevel,
+        confidence,
+        responseTimeMs,
+      });
 
-    const responseTimeMs = Date.now() - startTime;
-
-    // 2. Pass to deterministic engine (decideFinalRating)
-    const decision = decideFinalRating({
-      aiResult: evalResult,
-      maxHintLevelUsed: activeHintLevel,
-      confidence,
-      responseTimeMs,
-    });
-
-    setEvaluation(evalResult);
-    setFinalRatingInfo({
-      rating: decision.finalRating,
-      isFossilized: decision.isFossilizedError,
-      reasonTr: decision.reasonTr,
-    });
-
-    // 3. Record attempt
-    onRecordAttempt({
-      id: `attempt_${Date.now()}`,
-      promptId: currentPrompt.id,
-      language: currentLanguage,
-      userAnswer: userAnswer.trim(),
-      hintsUsedCount: activeHintLevel > 0 ? 1 : 0,
-      maxHintLevel: activeHintLevel,
-      confidence,
-      responseTimeMs,
-      evaluation: evalResult,
-      finalRating: decision.finalRating,
-      isFossilizedError: decision.isFossilizedError,
-      createdAt: new Date().toISOString(),
-    });
-
-    setIsEvaluating(false);
+      setEvaluation(evalResult);
+      setFinalRatingInfo({
+        rating: decision.finalRating,
+        isFossilized: decision.isFossilizedError,
+        reasonTr: decision.reasonTr,
+      });
+      onRecordAttempt({
+        id: `attempt_${Date.now()}`,
+        promptId: currentPrompt.id,
+        language: currentLanguage,
+        userAnswer: userAnswer.trim(),
+        hintsUsedCount: activeHintLevel > 0 ? 1 : 0,
+        maxHintLevel: activeHintLevel,
+        confidence,
+        responseTimeMs,
+        evaluation: evalResult,
+        finalRating: decision.finalRating,
+        isFossilizedError: decision.isFossilizedError,
+        createdAt: new Date().toISOString(),
+      });
+    } finally {
+      submissionInFlightRef.current = false;
+      setIsEvaluating(false);
+    }
   };
 
   const handleNextPrompt = () => {
@@ -283,12 +286,34 @@ export const UretTab: React.FC<UretTabProps> = ({
     try {
       const inputs = selectionInputsRef.current;
       const languagePrompts = inputs.prompts.filter((p) => p.language === inputs.currentLanguage);
-      const avoidSentences = languagePrompts.map((p) => p.targetReference).slice(-40);
+      const allExistingTargetTexts = languagePrompts.map((p) => p.targetReference);
+      const recentlyShownTexts = Object.values(inputs.promptHistory)
+        .filter((entry) => entry.language === inputs.currentLanguage)
+        .sort((a, b) => Date.parse(b.lastShownAt) - Date.parse(a.lastShownAt))
+        .map((entry) => languagePrompts.find((prompt) => prompt.id === entry.promptId)?.targetReference)
+        .filter((text): text is string => Boolean(text));
+      const avoidSentences = Array.from(new Set([...recentlyShownTexts, ...allExistingTargetTexts])).slice(0, 80);
       const errorTopics = fossilizedErrors
         .filter((error) => error.language === currentLanguage && !error.resolved)
         .slice(0, 5)
         .map((error) => error.errorDescription)
         .filter(Boolean);
+      const now = Date.now();
+      const reviewTargets = inputs.learningItems
+        .filter((item) =>
+          item.language === inputs.currentLanguage &&
+          Number.isFinite(Date.parse(item.nextReviewDate)) &&
+          Date.parse(item.nextReviewDate) <= now
+        )
+        .sort((a, b) => Date.parse(a.nextReviewDate) - Date.parse(b.nextReviewDate))
+        .slice(0, 8)
+        .map((item) => ({
+          target: item.keyTermOrPattern || item.targetText,
+          previousSentence: item.targetText,
+          domain: item.domain,
+          masteryState: item.masteryState,
+          lastRating: item.lastRating,
+        }));
 
       const payload = await callLinguaApi<{ prompts?: unknown }>('/api/generate-production-prompts', {
         language: currentLanguage,
@@ -296,6 +321,7 @@ export const UretTab: React.FC<UretTabProps> = ({
         intensityLevel: effectiveIntensity,
         cefrLevel: cefrEstimate.level ?? DEFAULT_CEFR_LEVEL,
         errorTopics,
+        reviewTargets,
         avoidSentences,
         count: 6,
       });
@@ -303,7 +329,7 @@ export const UretTab: React.FC<UretTabProps> = ({
       const generated = parseGeneratedPrompts(payload.prompts, {
         language: currentLanguage,
         fallbackDomain: selectedDomain === 'all' ? 'general' : selectedDomain,
-        existingTargetTexts: avoidSentences,
+        existingTargetTexts: allExistingTargetTexts,
       });
 
       if (generated.length === 0) {
@@ -364,6 +390,19 @@ export const UretTab: React.FC<UretTabProps> = ({
   );
 
   if (!currentPrompt || !selectionState || selectionState.status !== 'ok') {
+    if (selectionState?.status === 'needs_fresh_content') {
+      return (
+        <div className="bg-white p-8 rounded-2xl border border-slate-200 text-center space-y-4">
+          <Sparkles className="w-12 h-12 text-violet-500 mx-auto" />
+          <h3 className="text-xl font-bold text-slate-800">Bu Cümleleri Zaten Tamamladın</h3>
+          <p className="text-sm text-slate-500 max-w-md mx-auto">
+            Sistem, bitirdiğin cümleyi ilerleme varmış gibi tekrar göstermeyecek. Aynı kelime ve kalıpları yeni bir bağlamda çalışmak için taze cümle üret.
+          </p>
+          {aiGenerateButton('Yeni Bağlamlarda Cümle Üret')}
+        </div>
+      );
+    }
+
     if (selectionState?.status === 'awaiting_schedule') {
       const dueDate = new Date(selectionState.nextDueAt);
       return (
@@ -890,10 +929,15 @@ export const UretTab: React.FC<UretTabProps> = ({
           {/* Submit Action Button */}
           <button
             onClick={handleSubmit}
-            disabled={!userAnswer.trim() || isEvaluating}
+            disabled={!userAnswer.trim() || isEvaluating || Boolean(evaluation)}
             className="w-full py-3 bg-sky-600 hover:bg-sky-700 disabled:bg-slate-200 text-white font-bold text-sm rounded-xl shadow-md transition-colors flex items-center justify-center space-x-2"
           >
-            {isEvaluating ? (
+            {evaluation ? (
+              <>
+                <CheckCircle className="w-4 h-4" />
+                <span>Bu Cevap Kaydedildi</span>
+              </>
+            ) : isEvaluating ? (
               <>
                 <RefreshCw className="w-4 h-4 animate-spin" />
                 <span>AI Değerlendiriyor & FSRS Hesaplanıyor...</span>

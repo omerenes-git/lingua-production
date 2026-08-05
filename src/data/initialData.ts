@@ -280,7 +280,8 @@ export const INITIAL_PROMPTS: ProductionPrompt[] = [
   }
 ];
 
-export const INITIAL_ITEMS: LearningItem[] = [
+/** @deprecated Prototype showcase rows; never use as user progress. */
+export const LEGACY_DEMO_ITEMS: LearningItem[] = [
   {
     id: 'item_1',
     language: 'en',
@@ -357,6 +358,9 @@ export const INITIAL_ITEMS: LearningItem[] = [
     fossilizedCount: 0
   }
 ];
+
+/** A new account starts with no fabricated learning evidence. */
+export const INITIAL_ITEMS: LearningItem[] = [];
 
 export const INITIAL_PERSONAS: Persona[] = [
   {

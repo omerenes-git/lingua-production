@@ -105,9 +105,9 @@ export const CloudSyncModal: React.FC<CloudSyncModalProps> = ({
           </div>
           <div>
             <div className="text-[10px] font-extrabold text-sky-600 dark:text-sky-400 uppercase tracking-widest">
-              Supabase Bulut Senkronizasyonu
+              Otomatik Supabase Kaydı
             </div>
-            <h3 className="text-xl font-black leading-tight">Çoklu Cihaz Senkronizasyonu</h3>
+            <h3 className="text-xl font-black leading-tight">Otomatik Kayıt ve Çoklu Cihaz</h3>
           </div>
         </div>
 
@@ -123,7 +123,7 @@ export const CloudSyncModal: React.FC<CloudSyncModalProps> = ({
                   {email || 'Oturum bilgisi alınamadı'}
                 </div>
                 <div className="text-[11px] text-emerald-700 dark:text-emerald-400 font-medium">
-                  Bu Supabase hesabıyla giriş yaptığın her cihaz aynı veriyi görür.
+                  Otomatik kayıt açık. Bu hesapla giriş yaptığın her cihaz aynı veriyi görür.
                 </div>
               </div>
             </div>
@@ -155,7 +155,7 @@ export const CloudSyncModal: React.FC<CloudSyncModalProps> = ({
             className="flex-1 py-3 bg-sky-600 hover:bg-sky-500 disabled:opacity-60 text-white font-bold text-xs rounded-xl flex items-center justify-center space-x-2 shadow-xs transition-all"
           >
             {isSyncing ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
-            <span>{isSyncing ? 'Senkronize ediliyor…' : 'Şimdi senkronize et'}</span>
+            <span>{isSyncing ? 'Kontrol ediliyor…' : 'Senkron durumunu kontrol et'}</span>
           </button>
           <button
             onClick={handleSignOut}

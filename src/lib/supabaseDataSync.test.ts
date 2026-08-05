@@ -1,5 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { CLOUD_DATA_APPLIED_EVENT, getLastSyncedAt, startSupabaseDataSync, syncNow } from './supabaseDataSync';
+import {
+  CLOUD_DATA_APPLIED_EVENT,
+  getLastSyncedAt,
+  persistSyncedLocalValue,
+  startSupabaseDataSync,
+  syncNow,
+} from './supabaseDataSync';
 import { getValidSession } from './supabaseWeb';
 
 vi.mock('./supabaseWeb', () => ({
@@ -263,7 +269,7 @@ describe('reconcileWithCloud (via syncNow)', () => {
 
     const firstResolution = await syncNow();
 
-    expect(firstResolution).toBe('merged');
+    expect(firstResolution).toBe('error');
     expect(getUploadCalls(attempt1.calls)).toHaveLength(1);
     expect(getLastSyncedAt()).toBeNull();
     const itemsAfterFailedUpload = JSON.parse(localStorage.getItem('lingua_items')!) as Array<{ id: string }>;
@@ -306,7 +312,7 @@ describe('reconcileWithCloud (via syncNow)', () => {
 
     const resolution = await syncNow();
 
-    expect(resolution).toBe('merged');
+    expect(resolution).toBe('error');
     expect(getLastSyncedAt()).toBeNull();
     const items = JSON.parse(localStorage.getItem('lingua_items')!) as Array<{ id: string }>;
     expect(items.map((item) => item.id).sort()).toEqual(['a', 'b']);
@@ -446,6 +452,56 @@ describe('cloud merges apply in place instead of reloading the page', () => {
         await vi.advanceTimersByTimeAsync(2000);
 
         expect(reloadSpy).not.toHaveBeenCalled();
+      } finally {
+        stop();
+      }
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('persists a state mutation from the explicit autosave event without waiting for the 2-second fallback poll', async () => {
+    vi.useFakeTimers();
+    try {
+      const { calls } = installFetchMock({ get: () => jsonResponse(200, []), post: () => jsonResponse(201) });
+      const stop = await startSupabaseDataSync();
+      try {
+        const uploadsBeforeMutation = getUploadCalls(calls).length;
+        persistSyncedLocalValue('lingua_items', [{ id: 'event-save', targetText: 'saved immediately' }]);
+
+        await vi.advanceTimersByTimeAsync(249);
+        expect(getUploadCalls(calls)).toHaveLength(uploadsBeforeMutation);
+        await vi.advanceTimersByTimeAsync(1);
+        expect(getUploadCalls(calls).length).toBeGreaterThan(uploadsBeforeMutation);
+      } finally {
+        stop();
+      }
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('automatically retries a failed cloud upload; manual sync is not required', async () => {
+    vi.useFakeTimers();
+    try {
+      localStorage.setItem('lingua_items', JSON.stringify([{ id: 'retry-me', targetText: 'durable' }]));
+      let postAttempt = 0;
+      const { calls } = installFetchMock({
+        get: () => jsonResponse(200, []),
+        post: () => {
+          postAttempt += 1;
+          return jsonResponse(postAttempt === 1 ? 500 : 201);
+        },
+      });
+
+      const stop = await startSupabaseDataSync();
+      try {
+        expect(getUploadCalls(calls)).toHaveLength(1);
+        expect(getLastSyncedAt()).toBeNull();
+
+        await vi.advanceTimersByTimeAsync(2_000);
+        expect(getUploadCalls(calls)).toHaveLength(2);
+        expect(getLastSyncedAt()).not.toBeNull();
       } finally {
         stop();
       }

@@ -1,10 +1,16 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { TargetLanguage, LearningItem, ProductionPrompt, ProductionAttempt, FossilizedError } from './types';
-import { INITIAL_PROMPTS, INITIAL_ITEMS } from './data/initialData';
+import { TargetLanguage, LearningItem, ProductionPrompt, ProductionAttempt, FossilizedError, PromptHistory } from './types';
+import { INITIAL_PROMPTS } from './data/initialData';
 import { calculateNextMasteryState, scheduleReview } from './lib/engine';
 import { AI_SERVICE_UNAVAILABLE_MARKER } from './lib/aiService';
 import { normalizeSentenceText } from './lib/text';
-import { CLOUD_DATA_APPLIED_EVENT } from './lib/supabaseDataSync';
+import {
+  CLOUD_DATA_APPLIED_EVENT,
+  persistSyncedLocalValue,
+  removeSyncedLocalValue,
+} from './lib/supabaseDataSync';
+import { readPromptHistory, recordPromptCompleted, recordPromptShown } from './lib/promptHistory';
+import { removeLegacyDemoLearningItems } from './lib/progressData';
 import {
   DAILY_GOAL,
   crossedDailyGoal,
@@ -30,6 +36,7 @@ import { FloatingAssistantChat } from './components/FloatingAssistantChat';
 const normalizeText = normalizeSentenceText;
 
 const SESSION_SEEN_KEY = 'lingua_session_seen';
+const PROMPT_HISTORY_KEY = 'lingua_prompt_history';
 const EMPTY_SEEN: Record<TargetLanguage, string[]> = { en: [], de: [], sr: [] };
 
 function readSessionSeen(): Record<TargetLanguage, string[]> {
@@ -45,6 +52,16 @@ function readHistory(): Record<string, number> {
   try { return JSON.parse(localStorage.getItem('lingua_daily_history') || '{}'); } catch { return {}; }
 }
 
+function readLearningItems(): LearningItem[] {
+  try {
+    const saved = localStorage.getItem('lingua_items');
+    const parsed = saved ? JSON.parse(saved) : [];
+    return Array.isArray(parsed) ? removeLegacyDemoLearningItems(parsed as LearningItem[]) : [];
+  } catch {
+    return [];
+  }
+}
+
 export function App() {
   const [currentLanguage, setCurrentLanguage] = useState<TargetLanguage>('en');
   const [activeTab, setActiveTab] = useState<string>('bugun');
@@ -53,6 +70,7 @@ export function App() {
   const [showCloudSyncModal, setShowCloudSyncModal] = useState(false);
   const [showPwaModal, setShowPwaModal] = useState(false);
   const [dailyHistory, setDailyHistory] = useState<Record<string, number>>(readHistory);
+  const [promptHistory, setPromptHistory] = useState<PromptHistory>(() => readPromptHistory(localStorage.getItem(PROMPT_HISTORY_KEY)));
   // Prompt ids already shown during the current practice session, per language.
   // Kept local-only (not synced to Supabase): "already seen this session" is a
   // per-device presentation concern, not learning data that should be shared
@@ -65,23 +83,22 @@ export function App() {
 
   useEffect(() => {
     document.documentElement.classList.toggle('dark', darkMode);
-    localStorage.setItem('lingua_dark_mode', String(darkMode));
+    persistSyncedLocalValue('lingua_dark_mode', darkMode);
   }, [darkMode]);
 
   const [prompts, setPrompts] = useState<ProductionPrompt[]>(() => {
     try { const saved = localStorage.getItem('lingua_prompts'); return saved ? JSON.parse(saved) : INITIAL_PROMPTS; } catch { return INITIAL_PROMPTS; }
   });
-  const [learningItems, setLearningItems] = useState<LearningItem[]>(() => {
-    try { const saved = localStorage.getItem('lingua_items'); return saved ? JSON.parse(saved) : INITIAL_ITEMS; } catch { return INITIAL_ITEMS; }
-  });
+  const [learningItems, setLearningItems] = useState<LearningItem[]>(readLearningItems);
   const [fossilizedErrors, setFossilizedErrors] = useState<FossilizedError[]>(() => {
     try { const saved = localStorage.getItem('lingua_fossilized'); return saved ? JSON.parse(saved) : []; } catch { return []; }
   });
 
-  useEffect(() => localStorage.setItem('lingua_prompts', JSON.stringify(prompts)), [prompts]);
-  useEffect(() => localStorage.setItem('lingua_items', JSON.stringify(learningItems)), [learningItems]);
-  useEffect(() => localStorage.setItem('lingua_fossilized', JSON.stringify(fossilizedErrors)), [fossilizedErrors]);
-  useEffect(() => localStorage.setItem('lingua_daily_history', JSON.stringify(dailyHistory)), [dailyHistory]);
+  useEffect(() => persistSyncedLocalValue('lingua_prompts', prompts), [prompts]);
+  useEffect(() => persistSyncedLocalValue('lingua_items', learningItems), [learningItems]);
+  useEffect(() => persistSyncedLocalValue('lingua_fossilized', fossilizedErrors), [fossilizedErrors]);
+  useEffect(() => persistSyncedLocalValue('lingua_daily_history', dailyHistory), [dailyHistory]);
+  useEffect(() => persistSyncedLocalValue(PROMPT_HISTORY_KEY, promptHistory), [promptHistory]);
   useEffect(() => localStorage.setItem(SESSION_SEEN_KEY, JSON.stringify(sessionSeenIds)), [sessionSeenIds]);
 
   // A background Supabase sync can merge in data from another device at any
@@ -92,10 +109,15 @@ export function App() {
     const handleCloudDataApplied = (event: Event) => {
       const detail = (event as CustomEvent<Record<string, unknown>>).detail || {};
       if (Array.isArray(detail.lingua_prompts)) setPrompts(detail.lingua_prompts as ProductionPrompt[]);
-      if (Array.isArray(detail.lingua_items)) setLearningItems(detail.lingua_items as LearningItem[]);
+      if (Array.isArray(detail.lingua_items)) {
+        setLearningItems(removeLegacyDemoLearningItems(detail.lingua_items as LearningItem[]));
+      }
       if (Array.isArray(detail.lingua_fossilized)) setFossilizedErrors(detail.lingua_fossilized as FossilizedError[]);
       if (detail.lingua_daily_history && typeof detail.lingua_daily_history === 'object') {
         setDailyHistory(detail.lingua_daily_history as Record<string, number>);
+      }
+      if (detail.lingua_prompt_history && typeof detail.lingua_prompt_history === 'object') {
+        setPromptHistory(readPromptHistory(JSON.stringify(detail.lingua_prompt_history)));
       }
       if (typeof detail.lingua_dark_mode === 'boolean') setDarkMode(detail.lingua_dark_mode);
     };
@@ -114,6 +136,7 @@ export function App() {
   };
 
   const handlePromptShown = (promptId: string) => {
+    setPromptHistory((previous) => recordPromptShown(previous, currentLanguage, promptId));
     setSessionSeenIds((previous) => {
       const existing = previous[currentLanguage] || [];
       if (existing.includes(promptId)) return previous;
@@ -133,6 +156,13 @@ export function App() {
   const handleRecordAttempt = (attempt: ProductionAttempt) => {
     if (attempt.evaluation.explanationTr.startsWith(AI_SERVICE_UNAVAILABLE_MARKER)) return;
 
+    setPromptHistory((previous) => recordPromptCompleted(
+      previous,
+      attempt.language,
+      attempt.promptId,
+      attempt.finalRating,
+      new Date(attempt.createdAt),
+    ));
     recordCompletedExercise(attempt.language);
     const matchedPrompt = prompts.find((prompt) => prompt.id === attempt.promptId);
 
@@ -227,11 +257,14 @@ export function App() {
 
   const handleClearData = () => {
     if (!confirm('Tüm kişisel pratik verilerini sıfırlamak istediğinize emin misiniz?')) return;
-    ['lingua_prompts', 'lingua_items', 'lingua_fossilized', 'lingua_daily_history', SESSION_SEEN_KEY].forEach((key) => localStorage.removeItem(key));
+    const syncedKeys = ['lingua_prompts', 'lingua_items', 'lingua_fossilized', 'lingua_daily_history', PROMPT_HISTORY_KEY] as const;
+    syncedKeys.forEach((key) => removeSyncedLocalValue(key));
+    localStorage.removeItem(SESSION_SEEN_KEY);
     setPrompts(INITIAL_PROMPTS);
-    setLearningItems(INITIAL_ITEMS);
+    setLearningItems([]);
     setFossilizedErrors([]);
     setDailyHistory({});
+    setPromptHistory({});
     setSessionSeenIds({ ...EMPTY_SEEN });
     setSessionCompleteLanguage(null);
   };
@@ -255,6 +288,7 @@ export function App() {
             learningItems={learningItems}
             fossilizedErrors={fossilizedErrors}
             seenPromptIds={sessionSeenIds[currentLanguage] || []}
+            promptHistory={promptHistory}
             onPromptShown={handlePromptShown}
             onRecordAttempt={handleRecordAttempt}
             onAddLearningItem={handleAddLearningItem}
