@@ -24,3 +24,9 @@ node_modules/
 *.log
 .DS_Store
 Thumbs.db
+
+# Supabase local tooling
+supabase/.temp/
+
+# VPS-only monitoring script (not part of the app)
+scripts/lingua-watchdog.sh
