@@ -137,15 +137,17 @@ fark edildi. Düzeltmeler, gerçekten üretimde olan `src/` ağacına yapıldı.
 kapsam dışı bırakılıp bırakılmayacağının netleştirilmesi ayrı bir karar
 gerektiriyor; burada sessizce göz ardı edilmedi.
 
-## 8. Üret modu oturum-görüldü listesi yalnızca yerelde tutuluyor
+## 8. Oturum listesi yerel; kalıcı cümle geçmişi senkronize
 
-"Bu oturumda gösterilen cümle kimlikleri" (`lingua_session_seen`), Supabase'e
-senkronize edilen `DATA_KEYS` listesine bilerek eklenmedi. Gerekçe: bu bilgi
-öğrenme verisi değil, cihaza özgü sunum durumudur — bir cihazda görülmüş bir
-cümlenin başka bir cihazda da gizlenmesi beklenmez. Buna karşılık tamamlanan
-cümlelerin FSRS `nextReviewDate`'i (`lingua_items` üzerinden, senkronize
-edilir) gerçek "yakın zamanda tekrar gösterme" korumasını cihazlar arası
-sağlar.
+"Bu oturumda gösterilen cümle kimlikleri" (`lingua_session_seen`) yalnızca
+cihazda tutulur; aktif kart akışını başka bir cihazın oturumu değiştirmez.
+Buna karşılık `lingua_prompt_history` gerçek öğrenme/sunum verisidir ve
+Supabase'e senkronize edilir: son gösterim, gösterim sayısı, tamamlanma sayısı
+ve son FSRS puanı cihazlar arasında korunur. Tamamlanmış birebir cümle tekrar
+"yeni kart" olarak sunulmaz; tekrar zamanı gelen kelime/kalıp AI üretimine
+`reviewTargets` olarak verilir ve yeni bağlamda sorulur. Cevaplanmadan geçilen
+kartlar da uygulama yeniden açılsa bile 24 saatlik sunum bekleme süresine
+tabidir.
 
 ## 9. Günlük sayaç artık dile göre ad alanına ayrılıyor (`lingua_daily_history`)
 
@@ -186,8 +188,23 @@ kartında doğrudan İleri/IELTS içeriğiyle karşılaşabiliyordu.
   filtresini **değiştirmez** — onun yerine yeni, isteğe bağlı bir
   `preferredIntensity` yumuşak tercihi eklendi: eşleşen bir cümle
   varsa önce o seçilir, yoksa mevcut uygun havuza sessizce geri döner.
-  Böylece küçük sabit havuzda bir kullanıcı asla "sıkışmış" hissetmez
-  (`pool_exhausted`/`awaiting_schedule` zamanlaması değişmez) ama yeni bir
-  öğrenci ilk kartında elinden geldiğince başlangıç seviyesi bir cümle
-  görür. Kasıtlı olarak `selectNextPrompt`'un test edilen sert `intensity`
-  sözleşmesine dokunulmadı.
+  Böylece yeni bir öğrenci ilk kartında elinden geldiğince başlangıç seviyesi
+  bir cümle görür. Tamamlanmış birebir cümleler yeni bağlam gerektiren ayrı
+  bir duruma düşer; sert `intensity` filtresinin sözleşmesi değişmez.
+
+## 11. Otomatik kayıt, tekrar deneme ve prototip ilerleme temizliği (2026-08-05)
+
+- React durumundaki her değişiklik önce yerel depoya yazılır ve aynı anda
+  `lingua:local-data-changed` olayıyla bulut senkronu tetiklenir. 2 saniyelik
+  tarama yalnızca kaçırılmış/eski kod kaynaklı yazılar için güvenlik ağıdır.
+- Ağ/5xx/oturum hatası başarısız bir değişikliği "işlenmiş" saymaz; artan
+  aralıklı otomatik tekrar yapılır. Ayrıca 30 saniyede bir başka cihazdaki
+  değişiklikler çekilir. Elle "Şimdi senkronize et" zorunlu değildir.
+- İlk prototipte `item_1`–`item_5` kimlikleriyle gönderilen beş örnek kayıt
+  gerçek kullanıcı üretimi olmadığı hâlde CEFR ve kelime sayılarına
+  katılıyordu. Yeni hesaplar boş ilerlemeyle başlar; mevcut hesaplarda yalnız
+  bilinen id + metin imzası eşleşen bu örnekler temizlenir. Gerçek içe
+  aktarımlar korunur.
+- Bir cevap değerlendirilip kaydedildikten sonra gönderme düğmesi kilitlenir;
+  çift dokunma/yeniden gönderme günlük sayacı ve hakimiyet durumunu ikinci kez
+  artıramaz.

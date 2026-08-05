@@ -15,12 +15,14 @@ const VERSION_KEY = 'lingua_sync_versions';
  * apply `event.detail` directly onto React state.
  */
 export const CLOUD_DATA_APPLIED_EVENT = 'lingua:cloud-data-applied';
+export const LOCAL_DATA_CHANGED_EVENT = 'lingua:local-data-changed';
 
 const DATA_KEYS = [
   'lingua_prompts',
   'lingua_items',
   'lingua_fossilized',
   'lingua_daily_history',
+  'lingua_prompt_history',
   'lingua_dark_mode',
   'lingua_auto_sync',
 ] as const;
@@ -157,9 +159,11 @@ function bootstrapVersions(state: Record<string, unknown>, fallbackAt: string): 
       if (!bucket[id]) bucket[id] = { at: fallbackAt };
     });
   }
-  const historyBucket = ensureVersionBucket(versions, 'lingua_daily_history');
-  const history = isRecord(state.lingua_daily_history) ? state.lingua_daily_history : {};
-  for (const date of Object.keys(history)) if (!historyBucket[date]) historyBucket[date] = { at: fallbackAt };
+  for (const key of ['lingua_daily_history', 'lingua_prompt_history'] as const) {
+    const bucket = ensureVersionBucket(versions, key);
+    const record = isRecord(state[key]) ? state[key] : {};
+    for (const id of Object.keys(record)) if (!bucket[id]) bucket[id] = { at: fallbackAt };
+  }
   for (const key of ['lingua_dark_mode', 'lingua_auto_sync'] as const) {
     if (key in state) {
       const bucket = ensureVersionBucket(versions, key);
@@ -183,12 +187,14 @@ function stampDataChanges(previous: Record<string, unknown>, current: Record<str
     }
   }
 
-  const oldHistory = isRecord(previous.lingua_daily_history) ? previous.lingua_daily_history : {};
-  const newHistory = isRecord(current.lingua_daily_history) ? current.lingua_daily_history : {};
-  const historyBucket = ensureVersionBucket(versions, 'lingua_daily_history');
-  for (const date of new Set([...Object.keys(oldHistory), ...Object.keys(newHistory)])) {
-    if (JSON.stringify(oldHistory[date]) === JSON.stringify(newHistory[date])) continue;
-    historyBucket[date] = { at: changedAt, ...(date in newHistory ? {} : { deleted: true }) };
+  for (const key of ['lingua_daily_history', 'lingua_prompt_history'] as const) {
+    const before = isRecord(previous[key]) ? previous[key] : {};
+    const after = isRecord(current[key]) ? current[key] : {};
+    const bucket = ensureVersionBucket(versions, key);
+    for (const id of new Set([...Object.keys(before), ...Object.keys(after)])) {
+      if (JSON.stringify(before[id]) === JSON.stringify(after[id])) continue;
+      bucket[id] = { at: changedAt, ...(id in after ? {} : { deleted: true }) };
+    }
   }
 
   for (const key of ['lingua_dark_mode', 'lingua_auto_sync'] as const) {
@@ -226,19 +232,28 @@ function mergeArrayKey(key: DataKey, local: Record<string, unknown>, cloud: Reco
   return output;
 }
 
-function mergeHistory(local: Record<string, unknown>, cloud: Record<string, unknown>, mergedVersions: VersionMap, localVersions: VersionMap, cloudVersions: VersionMap, localFallback: string, cloudFallback: string): JsonRecord {
-  const localHistory = isRecord(local.lingua_daily_history) ? local.lingua_daily_history : {};
-  const cloudHistory = isRecord(cloud.lingua_daily_history) ? cloud.lingua_daily_history : {};
-  const localBucket = localVersions.lingua_daily_history || {};
-  const cloudBucket = cloudVersions.lingua_daily_history || {};
-  const mergedBucket = ensureVersionBucket(mergedVersions, 'lingua_daily_history');
+function mergeRecordKey(
+  key: 'lingua_daily_history' | 'lingua_prompt_history',
+  local: Record<string, unknown>,
+  cloud: Record<string, unknown>,
+  mergedVersions: VersionMap,
+  localVersions: VersionMap,
+  cloudVersions: VersionMap,
+  localFallback: string,
+  cloudFallback: string,
+): JsonRecord {
+  const localRecord = isRecord(local[key]) ? local[key] : {};
+  const cloudRecord = isRecord(cloud[key]) ? cloud[key] : {};
+  const localBucket = localVersions[key] || {};
+  const cloudBucket = cloudVersions[key] || {};
+  const mergedBucket = ensureVersionBucket(mergedVersions, key);
   const output: JsonRecord = {};
 
-  for (const date of new Set([...Object.keys(localHistory), ...Object.keys(cloudHistory), ...Object.keys(localBucket), ...Object.keys(cloudBucket)])) {
-    const side = chooseSide(localBucket[date], cloudBucket[date], localFallback, cloudFallback);
-    const version = side === 'cloud' ? cloudBucket[date] : localBucket[date];
-    mergedBucket[date] = version || { at: side === 'cloud' ? cloudFallback : localFallback };
-    if (!mergedBucket[date].deleted) output[date] = side === 'cloud' ? cloudHistory[date] : localHistory[date];
+  for (const id of new Set([...Object.keys(localRecord), ...Object.keys(cloudRecord), ...Object.keys(localBucket), ...Object.keys(cloudBucket)])) {
+    const side = chooseSide(localBucket[id], cloudBucket[id], localFallback, cloudFallback);
+    const version = side === 'cloud' ? cloudBucket[id] : localBucket[id];
+    mergedBucket[id] = version || { at: side === 'cloud' ? cloudFallback : localFallback };
+    if (!mergedBucket[id].deleted) output[id] = side === 'cloud' ? cloudRecord[id] : localRecord[id];
   }
   return output;
 }
@@ -252,7 +267,9 @@ function mergeStates(local: Record<string, unknown>, cloud: Record<string, unkno
   for (const key of ['lingua_prompts', 'lingua_items', 'lingua_fossilized'] as const) {
     merged[key] = mergeArrayKey(key, local, cloud, mergedVersions, localVersions, cloudVersions, localFallback, cloudFallback);
   }
-  merged.lingua_daily_history = mergeHistory(local, cloud, mergedVersions, localVersions, cloudVersions, localFallback, cloudFallback);
+  for (const key of ['lingua_daily_history', 'lingua_prompt_history'] as const) {
+    merged[key] = mergeRecordKey(key, local, cloud, mergedVersions, localVersions, cloudVersions, localFallback, cloudFallback);
+  }
 
   for (const key of ['lingua_dark_mode', 'lingua_auto_sync'] as const) {
     const localVersion = localVersions[key]?.__value;
@@ -287,12 +304,14 @@ export function persistSyncedLocalValue(key: SyncKey, value: unknown): void {
   if (localStorage.getItem(key) === serialized) return;
   localStorage.setItem(key, serialized);
   markLocalDataChanged();
+  if (typeof window !== 'undefined') window.dispatchEvent(new Event(LOCAL_DATA_CHANGED_EVENT));
 }
 
 export function removeSyncedLocalValue(key: SyncKey): void {
   if (localStorage.getItem(key) === null) return;
   localStorage.removeItem(key);
   markLocalDataChanged();
+  if (typeof window !== 'undefined') window.dispatchEvent(new Event(LOCAL_DATA_CHANGED_EVENT));
 }
 
 async function requestCloudState(): Promise<CloudReadResult> {
@@ -386,71 +405,102 @@ async function reconcileWithCloud(): Promise<InitialResolution> {
   // CLOUD_DATA_APPLIED_EVENT ile bildirildi), ama senkronizasyon zamanı
   // başarılıymış gibi güncellenmez; bir sonraki denemede buluta tekrar
   // yüklenmeye çalışılır.
-  return localChanged ? 'merged' : 'error';
+  return 'error';
 }
 
 export async function startSupabaseDataSync(): Promise<() => void> {
   if (typeof window === 'undefined') return () => undefined;
-
-  // Applies any cloud-side changes onto localStorage and notifies listeners
-  // (see CLOUD_DATA_APPLIED_EVENT) instead of reloading the page — a reload
-  // used to wipe in-memory session state (active tab, in-progress Üret
-  // practice) any time this ran mid-session.
-  await reconcileWithCloud();
-
   let previousData = readDataState();
-  let lastSnapshot = stableSnapshot();
+  let lastSuccessfulSnapshot = stableSnapshot();
   let isSyncing = false;
-  let debounceId: number | null = null;
+  let pendingSync = true;
+  let scheduledSyncId: number | null = null;
+  let retryAttempt = 0;
+  let stopped = false;
 
-  const syncIfChanged = async (force = false) => {
-    if (isSyncing) return;
+  const retryDelays = [2_000, 5_000, 15_000, 30_000] as const;
+
+  const captureLocalChanges = (): boolean => {
+    const currentData = readDataState();
+    if (JSON.stringify(currentData) === JSON.stringify(previousData)) return false;
+    const state = readLocalState();
+    const fallback = localStorage.getItem(LOCAL_MUTATION_MARKER) || nowIso();
+    const versions = stampDataChanges(previousData, currentData, bootstrapVersions(state, fallback));
+    localStorage.setItem(VERSION_KEY, JSON.stringify(versions));
+    previousData = currentData;
+    markLocalDataChanged();
+    pendingSync = true;
+    return true;
+  };
+
+  const scheduleSync = (delayMs = 250) => {
+    if (stopped) return;
+    if (scheduledSyncId !== null) window.clearTimeout(scheduledSyncId);
+    scheduledSyncId = window.setTimeout(() => {
+      scheduledSyncId = null;
+      void syncIfChanged();
+    }, delayMs);
+  };
+
+  const syncIfChanged = async (force = false): Promise<void> => {
+    captureLocalChanges();
     const current = stableSnapshot();
-    if (!force && current === lastSnapshot) return;
+    if (!force && !pendingSync && current === lastSuccessfulSnapshot) return;
+    if (isSyncing) {
+      pendingSync = true;
+      return;
+    }
     isSyncing = true;
+    pendingSync = false;
     try {
-      await reconcileWithCloud();
-      lastSnapshot = stableSnapshot();
+      const resolution = await reconcileWithCloud();
       previousData = readDataState();
+      if (resolution === 'error' || resolution === 'no-session') {
+        pendingSync = true;
+        const delay = retryDelays[Math.min(retryAttempt, retryDelays.length - 1)];
+        retryAttempt += 1;
+        scheduleSync(delay);
+        return;
+      }
+
+      retryAttempt = 0;
+      lastSuccessfulSnapshot = stableSnapshot();
     } finally {
       isSyncing = false;
+      if (pendingSync && scheduledSyncId === null) scheduleSync(250);
     }
   };
 
-  const scheduleSync = () => {
-    if (debounceId !== null) window.clearTimeout(debounceId);
-    debounceId = window.setTimeout(() => {
-      debounceId = null;
-      void syncIfChanged();
-    }, 1500);
+  const onLocalDataChanged = () => {
+    captureLocalChanges();
+    scheduleSync();
   };
 
-  let warmupAttempts = 0;
+  let pollCount = 0;
   const intervalId = window.setInterval(() => {
-    const currentData = readDataState();
-    if (JSON.stringify(currentData) !== JSON.stringify(previousData)) {
-      const state = readLocalState();
-      const fallback = localStorage.getItem(LOCAL_MUTATION_MARKER) || nowIso();
-      const versions = stampDataChanges(previousData, currentData, bootstrapVersions(state, fallback));
-      localStorage.setItem(VERSION_KEY, JSON.stringify(versions));
-      previousData = currentData;
-      markLocalDataChanged();
-      scheduleSync();
-    }
-    warmupAttempts += 1;
-    if (warmupAttempts <= 6) void syncIfChanged(true);
+    if (captureLocalChanges()) scheduleSync();
+    pollCount += 1;
+    // Pull other-device changes even while this device is idle.
+    if (pollCount % 15 === 0) void syncIfChanged(true);
   }, 2000);
 
   const onVisibility = () => { if (document.visibilityState === 'hidden') void syncIfChanged(true); };
-  const onPageHide = () => void syncIfChanged(true);
+  const onPageHide = () => { captureLocalChanges(); void syncIfChanged(true); };
   const onOnline = () => void syncIfChanged(true);
+  window.addEventListener(LOCAL_DATA_CHANGED_EVENT, onLocalDataChanged);
   document.addEventListener('visibilitychange', onVisibility);
   window.addEventListener('pagehide', onPageHide);
   window.addEventListener('online', onOnline);
 
+  // Register listeners before the first network request so React state writes
+  // made during sign-in/startup cannot slip between initialization and sync.
+  await syncIfChanged(true);
+
   return () => {
+    stopped = true;
     window.clearInterval(intervalId);
-    if (debounceId !== null) window.clearTimeout(debounceId);
+    if (scheduledSyncId !== null) window.clearTimeout(scheduledSyncId);
+    window.removeEventListener(LOCAL_DATA_CHANGED_EVENT, onLocalDataChanged);
     document.removeEventListener('visibilitychange', onVisibility);
     window.removeEventListener('pagehide', onPageHide);
     window.removeEventListener('online', onOnline);

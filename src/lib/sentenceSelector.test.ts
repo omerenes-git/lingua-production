@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { selectNextPrompt } from './sentenceSelector';
 import { LearningItem, ProductionPrompt, TargetLanguage } from '../types';
+import { recordPromptCompleted, recordPromptShown } from './promptHistory';
 
 function makePrompt(overrides: Partial<ProductionPrompt> & { id: string; language: TargetLanguage; targetReference: string }): ProductionPrompt {
   return {
@@ -175,6 +176,72 @@ describe('selectNextPrompt', () => {
     const prompts = buildPool('en', 1);
     const result = selectNextPrompt({ prompts, language: 'en', domain: 'all', intensity: 'all', seenPromptIds: [], learningItems: [] });
     expect(result.status).toBe('ok');
+  });
+
+  it('never serves an exact sentence again after it was completed', () => {
+    const prompts = buildPool('en', 1);
+    const promptHistory = recordPromptCompleted({}, 'en', prompts[0].id, 'good', new Date('2026-01-01T00:00:00.000Z'));
+    const result = selectNextPrompt({
+      prompts,
+      language: 'en',
+      domain: 'all',
+      intensity: 'all',
+      seenPromptIds: [],
+      learningItems: [],
+      promptHistory,
+      now: new Date('2026-02-01T00:00:00.000Z'),
+    });
+    expect(result.status).toBe('needs_fresh_content');
+  });
+
+  it('migrates pre-history practice items with a scheduler rating as completed exact sentences', () => {
+    const prompts = buildPool('en', 1);
+    const learningItems = [makeItem({
+      id: 'practice_en_legacy',
+      language: 'en',
+      targetText: prompts[0].targetReference,
+      nextReviewDate: new Date('2020-01-01T00:00:00.000Z').toISOString(),
+      lastRating: 'good',
+    })];
+    const result = selectNextPrompt({ prompts, language: 'en', domain: 'all', intensity: 'all', seenPromptIds: [], learningItems });
+    expect(result.status).toBe('needs_fresh_content');
+  });
+
+  it('prefers a globally never-shown prompt over a previously skipped prompt after its cooldown', () => {
+    const prompts = buildPool('en', 2);
+    const promptHistory = recordPromptShown({}, 'en', prompts[0].id, new Date('2026-01-01T00:00:00.000Z'));
+    const result = selectNextPrompt({
+      prompts,
+      language: 'en',
+      domain: 'all',
+      intensity: 'all',
+      seenPromptIds: [],
+      learningItems: [],
+      promptHistory,
+      now: new Date('2026-01-03T00:00:00.000Z'),
+      random: () => 0,
+    });
+    expect(result.status).toBe('ok');
+    if (result.status !== 'ok') throw new Error('unreachable');
+    expect(result.prompt.id).toBe(prompts[1].id);
+  });
+
+  it('does not immediately resurface an unanswered prompt after an app restart', () => {
+    const prompts = buildPool('en', 1);
+    const promptHistory = recordPromptShown({}, 'en', prompts[0].id, new Date('2026-01-01T12:00:00.000Z'));
+    const result = selectNextPrompt({
+      prompts,
+      language: 'en',
+      domain: 'all',
+      intensity: 'all',
+      seenPromptIds: [],
+      learningItems: [],
+      promptHistory,
+      now: new Date('2026-01-01T13:00:00.000Z'),
+    });
+    expect(result.status).toBe('awaiting_schedule');
+    if (result.status !== 'awaiting_schedule') throw new Error('unreachable');
+    expect(result.nextDueAt).toBe('2026-01-02T12:00:00.000Z');
   });
 
   it('filters by domain and intensity in addition to language', () => {

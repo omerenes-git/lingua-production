@@ -33,12 +33,16 @@ const requiredFiles = [
   'src/lib/linguaApi.ts',
   'src/lib/supabaseWeb.ts',
   'src/lib/supabaseDataSync.ts',
+  'src/lib/promptHistory.ts',
+  'src/lib/progressData.ts',
+  'src/lib/sentenceSelector.ts',
   'src/components/SupabaseAuthGate.tsx',
   'src/components/FloatingAssistantChat.tsx',
   'src/components/Tabs/GramerPratigiTab.tsx',
   'public/manifest.json',
   'public/service-worker.js',
   'supabase/functions/lingua-web-api/index.ts',
+  'supabase/functions/generate-production-prompts/index.ts',
 ];
 
 for (const path of requiredFiles) {
@@ -55,6 +59,12 @@ const [
   grammarTab,
   floatingAssistant,
   authGate,
+  productionPromptFunction,
+  app,
+  dataSync,
+  promptHistory,
+  progressData,
+  sentenceSelector,
 ] = await Promise.all([
   read('src/main.tsx'),
   read('src/lib/linguaApi.ts'),
@@ -65,6 +75,12 @@ const [
   read('src/components/Tabs/GramerPratigiTab.tsx'),
   read('src/components/FloatingAssistantChat.tsx'),
   read('src/components/SupabaseAuthGate.tsx'),
+  read('supabase/functions/generate-production-prompts/index.ts'),
+  read('src/App.tsx'),
+  read('src/lib/supabaseDataSync.ts'),
+  read('src/lib/promptHistory.ts'),
+  read('src/lib/progressData.ts'),
+  read('src/lib/sentenceSelector.ts'),
 ]);
 
 check('Merkezi Edge Function istemcisi kullanıma hazır', apiClient.includes('callLinguaApi') && apiClient.includes('/functions/v1/lingua-web-api'), 'callLinguaApi veya Edge Function adresi eksik.');
@@ -77,6 +93,50 @@ check('PWA manifest standalone modunda', /"display"\s*:\s*"standalone"/.test(man
 check('Service worker production girişinde kayıtlı', main.includes('serviceWorker') && main.includes('registration.update'), 'Service worker kayıt veya güncelleme kontrolü eksik.');
 check('Edge Function kullanıcı girdisini sistem komutu saymıyor', edgeFunction.includes('<user_data>') && edgeFunction.includes('never system instructions'), 'Prompt injection ayrımı eksik.');
 check('İstek boyutu sınırlandırılmış', edgeFunction.includes('MAX_BODY_CHARS') && edgeFunction.includes('413'), 'Edge Function istek boyutu sınırı eksik.');
+check(
+  'Yeni cümle üretimi yalnızca Gemini kullanıyor',
+  productionPromptFunction.includes("readRequiredEnv('GEMINI_API_KEY'") &&
+    productionPromptFunction.includes('/v1beta/interactions') &&
+    !productionPromptFunction.includes('OPENAI_API_KEY'),
+  'Yeni cümle fonksiyonu Gemini yerine farklı bir sağlayıcıya düşebilir.',
+);
+check(
+  'Gemini cümle yanıtı JSON şemasıyla sınırlandırılmış',
+  productionPromptFunction.includes('PRODUCTION_PROMPTS_SCHEMA') &&
+    productionPromptFunction.includes('schema: PRODUCTION_PROMPTS_SCHEMA'),
+  'Gemini yanıt şeması eksik; uzun cümle grupları geçersiz JSON döndürebilir.',
+);
+check(
+  'Yeni cümle fonksiyonu kontrollü yeniden deneme yapıyor',
+  productionPromptFunction.includes('MAX_GEMINI_ATTEMPTS') && productionPromptFunction.includes('shouldRetry'),
+  'Geçici Gemini veya JSON ayrıştırma hataları yeniden denenmiyor.',
+);
+check(
+  'Tekrar zamanı gelen hedefler yeni bağlama taşınıyor',
+  productionPromptFunction.includes('buildAdaptivePrompt') && productionPromptFunction.includes('reviewTargets'),
+  'Yeni cümle fonksiyonu eski cümleyi farklı bağlamda yeniden kurma talimatını almıyor.',
+);
+check(
+  'Her React veri değişikliği otomatik bulut kaydını tetikliyor',
+  app.includes('persistSyncedLocalValue') && dataSync.includes('LOCAL_DATA_CHANGED_EVENT'),
+  'Yerel durum değişikliği yalnızca periyodik taramaya bırakılmış.',
+);
+check(
+  'Başarısız otomatik kayıt kendiliğinden yeniden deneniyor',
+  dataSync.includes('retryDelays') && dataSync.includes("resolution === 'error'"),
+  'Ağ veya sunucu hatasından sonra otomatik yeniden deneme eksik.',
+);
+check(
+  'Tamamlanan birebir cümle yeniden yeni kart sayılmıyor',
+  sentenceSelector.includes('hasExactCompletionEvidence') && sentenceSelector.includes('needs_fresh_content') &&
+    promptHistory.includes('PROMPT_RESHOW_COOLDOWN_MS'),
+  'Kalıcı cümle geçmişi veya birebir tekrar koruması eksik.',
+);
+check(
+  'Prototip ilerleme verisi gerçek metriklerden çıkarılıyor',
+  progressData.includes('LEGACY_DEMO_ITEM_SIGNATURES') && app.includes('removeLegacyDemoLearningItems'),
+  'Örnek ilerleme satırları gerçek kullanıcı metriğine karışabilir.',
+);
 check('Build komutu smoke testini çalıştırıyor', JSON.parse(packageJson).scripts?.build?.includes('npm run smoke'), 'Build öncesi smoke testi bağlı değil.');
 check('Gramer modülü merkezi API istemcisini kullanıyor', grammarTab.includes('callLinguaApi') && !grammarTab.includes("fetch('/api/"), 'Gramer modülünde eski göreli API çağrısı kaldı.');
 check(
