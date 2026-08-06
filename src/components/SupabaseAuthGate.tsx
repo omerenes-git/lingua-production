@@ -17,6 +17,7 @@ import {
   updatePassword,
   type WebSession,
 } from '../lib/supabaseWeb';
+import { syncNow } from '../lib/supabaseDataSync';
 
 interface SupabaseAuthGateProps {
   children: React.ReactNode;
@@ -152,12 +153,46 @@ export const SupabaseAuthGate: React.FC<SupabaseAuthGateProps> = ({ children }) 
   };
 
   const handleSignOut = async () => {
+    // 1) Bekleyen yerel değişiklikleri önce buluta yüklemeyi DENE (best-effort, 5 sn).
+    //    Çevrimdışı/oturum sorunu varsa syncNow hata döner — bu durumda kullanıcıya sor.
+    let canClearLocally = true;
+    try {
+      const resolution = await Promise.race([
+        syncNow(),
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), 5000)),
+      ]);
+      if (resolution === 'error' || resolution === 'no-session') {
+        canClearLocally = false;
+      }
+    } catch {
+      canClearLocally = false;
+    }
+    if (!canClearLocally) {
+      const proceed = window.confirm(
+        'Son değişikliklerin buluta yüklenemedi. Çıkış yaparsan bu cihazdaki son öğrenme verilerin kaybolabilir. Yine de çıkış yapılsın mı?',
+      );
+      if (!proceed) return;
+    }
+
     await signOut();
     // Aynı cihazda başka bir hesapla giriş yapılırsa önceki kullanıcının yerel
     // öğrenme verileri görünmesin (veri sızıntısı/gizlilik). Supabase sync,
     // yeniden girişte kullanıcının kendi verisini buluttan geri getirir.
     try {
-      ['lingua_prompts', 'lingua_items', 'lingua_fossilized', 'lingua_daily_history', 'lingua_session_seen', 'lingua_supabase_session_v1'].forEach((key) => localStorage.removeItem(key));
+      [
+        'lingua_prompts',
+        'lingua_items',
+        'lingua_fossilized',
+        'lingua_daily_history',
+        'lingua_session_seen',
+        'lingua_supabase_session_v1',
+        // Versiyon/tombstone haritası + sync zaman damgaları da temizlenmeli;
+        // aksi halde sync merge'i silinen kayıtları bulut tarafında küçültebilir
+        // ve hesaplar arası yabancı metadata taşınır. (ErrorBoundary deseni)
+        'lingua_sync_versions',
+        'lingua_local_state_updated_at',
+        'lingua_supabase_state_updated_at',
+      ].forEach((key) => localStorage.removeItem(key));
     } catch {
       // localStorage kullanılamıyorsa sessizce geç
     }
@@ -166,6 +201,10 @@ export const SupabaseAuthGate: React.FC<SupabaseAuthGateProps> = ({ children }) 
     setPassword('');
     setNewPassword('');
     setConfirmPassword('');
+    // Arka plan sync döngüsü SPA'da oturum değişince durmuyor; boş state'i algılayıp
+    // versions/tombstone haritasını yeniden yazabiliyor. Sayfayı yenilemek döngüyü
+    // sıfırlar ve login ekranına temiz state ile döner.
+    window.location.reload();
   };
 
   if (isChecking) {
