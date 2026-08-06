@@ -68,4 +68,18 @@ test.describe('LingQ entegrasyonu', () => {
     await page.getByRole('button', { name: /^LingQ$/i }).click();
     await expect(page.getByText(/LingQ|Senkronizasyon/i).first()).toBeVisible({ timeout: 20_000 });
   });
+
+  test('LingQ senkronizasyonu gerçek API verisiyle çalışır (sunucu anahtarı)', async ({ page }) => {
+    await loginDE(page);
+    await goTab(page, 'ilerleme');
+    await page.getByRole('button', { name: /^LingQ$/i }).click();
+    // Senkronize et (anahtar boş — sunucuda LINGQ_API_KEY secret'ı var)
+    await page.getByRole('button', { name: /senkronize et/i }).click();
+    // Gerçek API verisi gelir: "Doğrulanmış LingQ kart verisi" + içeri aktarılan kelime sayısı
+    await expect(page.getByText(/Doğrulanmış LingQ kart verisi/i)).toBeVisible({ timeout: 60_000 });
+    await expect(page.getByText(/kelimesi içeri aktarıldı/i).first()).toBeVisible({ timeout: 10_000 });
+    // Anahtar tarayıcıda saklanmamalı (güvenlik: sunucu secret'ı kullanıldı)
+    const stored = await page.evaluate(() => Object.keys(localStorage).filter((k) => k.toLowerCase().includes('lingq')));
+    expect(stored).not.toContain('lingq_api_key');
+  });
 });
