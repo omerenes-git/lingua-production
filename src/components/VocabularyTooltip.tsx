@@ -4,12 +4,19 @@ import { callLinguaApi } from '../lib/linguaApi';
 import { Volume2, BookOpen, PlusCircle, Check, Loader2, X, AlertTriangle, RefreshCw } from 'lucide-react';
 
 interface LookupData {
+  meaningTarget: string;
   translationTr: string;
   grammaticalRole: string;
   cefrLevel: string;
   exampleSentence: string;
   exampleTranslationTr: string;
 }
+
+const MEANING_LABELS: Record<TargetLanguage, { label: string; lang: string }> = {
+  en: { label: 'Meaning in English', lang: 'İngilizce' },
+  de: { label: 'Bedeutung auf Deutsch', lang: 'Almanca' },
+  sr: { label: 'Značenje na srpskom', lang: 'Sırpça' },
+};
 
 interface VocabularyTooltipProps {
   text: string;
@@ -55,12 +62,13 @@ export const VocabularyTooltip: React.FC<VocabularyTooltipProps> = ({
         language,
       });
 
-      if (typeof data.translationTr !== 'string' || !data.translationTr.trim()) {
-        throw new Error('Sözlük servisi geçerli bir Türkçe anlam döndürmedi.');
+      if (typeof data.meaningTarget !== 'string' || !data.meaningTarget.trim()) {
+        throw new Error('Sözlük servisi geçerli bir hedef dil anlamı döndürmedi.');
       }
 
       setLookupData({
-        translationTr: data.translationTr.trim(),
+        meaningTarget: data.meaningTarget.trim(),
+        translationTr: typeof data.translationTr === 'string' ? data.translationTr.trim() : '',
         grammaticalRole: typeof data.grammaticalRole === 'string' ? data.grammaticalRole : '',
         cefrLevel: typeof data.cefrLevel === 'string' ? data.cefrLevel : '',
         exampleSentence: typeof data.exampleSentence === 'string' ? data.exampleSentence : '',
@@ -166,7 +174,16 @@ export const VocabularyTooltip: React.FC<VocabularyTooltipProps> = ({
             </div>
           ) : lookupData ? (
             <div className="space-y-2 text-xs">
-              <div className="bg-slate-800/80 p-2.5 rounded-xl border border-slate-700/80"><div className="text-[10px] text-slate-400 uppercase font-semibold">Türkçe anlamı</div><div className="font-bold text-sm text-emerald-400 mt-0.5">{lookupData.translationTr}</div>{lookupData.grammaticalRole && <div className="text-[10px] text-slate-400 mt-0.5 italic">{lookupData.grammaticalRole}</div>}</div>
+              <div className="bg-slate-800/80 p-2.5 rounded-xl border border-slate-700/80">
+                <div className="text-[10px] text-slate-400 uppercase font-semibold">{MEANING_LABELS[language].label}</div>
+                <div className="font-bold text-sm text-emerald-400 mt-0.5 leading-relaxed">{lookupData.meaningTarget}</div>
+                {lookupData.translationTr && (
+                  <div className="text-[10px] text-slate-500 mt-1">
+                    <span className="text-slate-400">Türkçe karşılık:</span> <span className="text-slate-300 font-semibold">{lookupData.translationTr}</span>
+                  </div>
+                )}
+                {lookupData.grammaticalRole && <div className="text-[10px] text-slate-400 mt-0.5 italic">{lookupData.grammaticalRole}</div>}
+              </div>
               {lookupData.exampleSentence && <div className="text-[11px] text-slate-300 bg-slate-800/50 p-2 rounded-lg italic border border-slate-800">“{lookupData.exampleSentence}”{lookupData.exampleTranslationTr && <span className="block text-slate-400 not-italic text-[10px] mt-0.5">({lookupData.exampleTranslationTr})</span>}</div>}
               {onAddLearningItem && (
                 <button type="button" onClick={handleAdd} disabled={added} className={`w-full py-2 rounded-xl font-bold text-xs flex items-center justify-center space-x-1.5 transition-all ${added ? 'bg-emerald-600 text-white' : 'bg-sky-600 hover:bg-sky-500 text-white shadow-md'}`}>

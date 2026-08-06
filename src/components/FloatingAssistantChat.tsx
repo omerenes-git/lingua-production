@@ -49,7 +49,6 @@ const VALID_TABS = new Set([
   'gramer_pratigi',
   'nasil_soylerim',
   'sohbet',
-  'hikayeler',
   'ilerleme',
 ]);
 

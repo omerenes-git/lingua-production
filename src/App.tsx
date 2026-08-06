@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { TargetLanguage, LearningItem, ProductionPrompt, ProductionAttempt, FossilizedError } from './types';
+import { TargetLanguage, LearningItem, ProductionPrompt, ProductionAttempt, FossilizedError, AIEvaluationResult, ErrorCategory } from './types';
 import { INITIAL_PROMPTS, INITIAL_ITEMS } from './data/initialData';
 import { calculateNextMasteryState, scheduleReview } from './lib/engine';
 import { AI_SERVICE_UNAVAILABLE_MARKER } from './lib/aiService';
@@ -18,7 +18,6 @@ import { BugunTab } from './components/Tabs/BugunTab';
 import { UretTab } from './components/Tabs/UretTab';
 import { NasilSoylerimTab } from './components/Tabs/NasilSoylerimTab';
 import { SohbetTab } from './components/Tabs/SohbetTab';
-import { HikayelerTab } from './components/Tabs/HikayelerTab';
 import { GramerPratigiTab } from './components/Tabs/GramerPratigiTab';
 import { IlerlemeTab } from './components/Tabs/IlerlemeTab';
 import { NotificationModal } from './components/NotificationModal';
@@ -43,6 +42,26 @@ function readSessionSeen(): Record<TargetLanguage, string[]> {
 
 function readHistory(): Record<string, number> {
   try { return JSON.parse(localStorage.getItem('lingua_daily_history') || '{}'); } catch { return {}; }
+}
+
+// En sık tekrarlanan hata kategorisini AI değerlendirmesinden türetir.
+// Bu, Gramer Koçu bölümünün kişiselleştirilmesinin temelidir.
+function deriveErrorCategory(errors: AIEvaluationResult['errors']): ErrorCategory | undefined {
+  if (!errors || errors.length === 0) return undefined;
+  const counts = new Map<string, number>();
+  for (const error of errors) {
+    if (!error.category) continue;
+    counts.set(error.category, (counts.get(error.category) || 0) + 1);
+  }
+  let top: string | undefined;
+  let topCount = 0;
+  for (const [category, count] of counts) {
+    if (count > topCount) {
+      top = category;
+      topCount = count;
+    }
+  }
+  return top as ErrorCategory | undefined;
 }
 
 export function App() {
@@ -193,6 +212,7 @@ export function App() {
       userAnswer: attempt.userAnswer,
       correctReference: matchedPrompt?.targetReference || attempt.evaluation.naturalAlternatives[0] || 'Referans ifade',
       errorDescription: attempt.evaluation.explanationTr,
+      errorCategory: deriveErrorCategory(attempt.evaluation.errors),
       confidence: attempt.confidence,
       date: new Date().toISOString(),
       resolved: false,
@@ -263,7 +283,6 @@ export function App() {
         {activeTab === 'gramer_pratigi' && <GramerPratigiTab currentLanguage={currentLanguage} fossilizedErrors={fossilizedErrors} onAddLearningItem={handleAddLearningItem} onMarkErrorResolved={handleResolveFossilizedError} />}
         {activeTab === 'nasil_soylerim' && <NasilSoylerimTab currentLanguage={currentLanguage} onAddLearningItem={handleAddLearningItem} />}
         {activeTab === 'sohbet' && <SohbetTab currentLanguage={currentLanguage} />}
-        {activeTab === 'hikayeler' && <HikayelerTab currentLanguage={currentLanguage} onAddLearningItem={handleAddLearningItem} />}
         {activeTab === 'ilerleme' && <IlerlemeTab currentLanguage={currentLanguage} learningItems={learningItems} fossilizedErrors={fossilizedErrors} dailyHistory={dailyHistory} onResolveFossilizedError={handleResolveFossilizedError} onClearData={handleClearData} onImportPrompts={handleImportPrompts} onAddLearningItems={handleAddLearningItems} />}
       </main>
       <footer className="bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 py-4 mt-auto transition-colors pb-16 sm:pb-4">

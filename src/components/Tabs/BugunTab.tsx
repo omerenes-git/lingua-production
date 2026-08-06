@@ -4,7 +4,6 @@ import {
   Play, 
   HelpCircle, 
   MessageSquare, 
-  BookOpen, 
   AlertTriangle, 
   Brain, 
   CheckCircle2, 
@@ -248,34 +247,7 @@ export const BugunTab: React.FC<BugunTabProps> = ({
             </div>
           </button>
 
-          {/* Action 4: Hikâyeler */}
-          <button
-            onClick={() => onNavigateTab('hikayeler')}
-            className="p-5 bg-white rounded-2xl border border-slate-200 hover:border-amber-400 hover:shadow-md transition-all text-left group flex flex-col justify-between space-y-4"
-          >
-            <div className="flex items-start justify-between">
-              <div className="w-10 h-10 rounded-xl bg-amber-600 text-white flex items-center justify-center">
-                <BookOpen className="w-5 h-5" />
-              </div>
-              <span className="text-xs font-medium text-amber-600 bg-amber-50 px-2.5 py-1 rounded-full">
-                i+1 Seviye
-              </span>
-            </div>
-            <div>
-              <h4 className="font-bold text-slate-900 text-base group-hover:text-amber-700 transition-colors">
-                Adaptif Hikâyeler
-              </h4>
-              <p className="text-xs text-slate-500 mt-1">
-                Kullandığın kelimelere göre üretilmiş klinik & gündelik okuma/dinleme hikâyeleri.
-              </p>
-            </div>
-            <div className="pt-2 flex items-center text-xs font-semibold text-amber-600 group-hover:translate-x-1 transition-transform">
-              <span>Hikâye Oku / Dinle</span>
-              <ArrowRight className="w-4 h-4 ml-1" />
-            </div>
-          </button>
-
-          {/* Action 5: Emin Olunan Yanlışlar */}
+          {/* Action 4: Emin Olunan Yanlışlar */}
           <button
             onClick={() => onNavigateTab('ilerleme')}
             className="p-5 bg-white rounded-2xl border border-slate-200 hover:border-rose-400 hover:shadow-md transition-all text-left group flex flex-col justify-between space-y-4"

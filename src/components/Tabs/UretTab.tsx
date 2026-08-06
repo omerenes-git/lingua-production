@@ -40,7 +40,9 @@ import {
   Brain,
   Clock,
   PartyPopper,
-  Loader2
+  Loader2,
+  ChevronDown,
+  ChevronUp
 } from 'lucide-react';
 
 interface UretTabProps {
@@ -89,6 +91,7 @@ export const UretTab: React.FC<UretTabProps> = ({
   const [userAnswer, setUserAnswer] = useState('');
   const [confidence, setConfidence] = useState<ConfidenceLevel>('certain');
   const [activeHintLevel, setActiveHintLevel] = useState<number>(0);
+  const [showHints, setShowHints] = useState<boolean>(false);
   const [isRecording, setIsRecording] = useState(false);
   const [isEvaluating, setIsEvaluating] = useState(false);
   const [evaluation, setEvaluation] = useState<AIEvaluationResult | null>(null);
@@ -680,7 +683,20 @@ export const UretTab: React.FC<UretTabProps> = ({
           </div>
         )}
 
-        {/* Graduated Hint Ladder Section */}
+        {/* Graduated Hint Ladder Section (collapsible toggle) */}
+        {!showHints ? (
+          <button
+            type="button"
+            onClick={() => setShowHints(true)}
+            className="w-full flex items-center justify-between px-4 py-2.5 bg-amber-50/80 border border-amber-200 rounded-xl text-xs font-bold text-amber-900 dark:bg-amber-950/40 dark:border-amber-800/60 dark:text-amber-200 transition-colors cursor-pointer"
+          >
+            <span className="flex items-center gap-1.5">
+              <Lightbulb className="w-4 h-4" />
+              İpucu Al {activeHintLevel > 0 ? `(Aşama ${activeHintLevel}/6 açık)` : ''}
+            </span>
+            <ChevronDown className="w-4 h-4" />
+          </button>
+        ) : (
         <div className="bg-gradient-to-br from-amber-50/60 via-slate-50 to-indigo-50/40 rounded-2xl p-4 sm:p-5 border-2 border-amber-300/80 dark:border-amber-700/60 shadow-sm space-y-3.5">
           <div className="flex items-center justify-between flex-wrap gap-2 pb-2 border-b border-amber-200/80">
             <div className="flex items-center space-x-2">
@@ -697,15 +713,27 @@ export const UretTab: React.FC<UretTabProps> = ({
               </div>
             </div>
 
-            {activeHintLevel < 6 && (
+            <div className="flex items-center gap-2 flex-wrap">
               <button
-                onClick={handleRevealNextHint}
-                className="px-3 py-1.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white text-xs font-black rounded-xl shadow-xs transition-all flex items-center space-x-1.5 cursor-pointer"
+                type="button"
+                onClick={() => setShowHints(false)}
+                className="px-2.5 py-1.5 bg-white dark:bg-slate-800 text-slate-500 hover:text-slate-700 text-xs font-bold rounded-xl border border-slate-200 dark:border-slate-700 flex items-center space-x-1 cursor-pointer"
+                title="İpucu panelini küçült"
               >
-                <Sparkles className="w-3.5 h-3.5" />
-                <span>+ Seviye {activeHintLevel + 1} İpucu Aç</span>
+                <ChevronUp className="w-3.5 h-3.5" />
+                <span>Küçült</span>
               </button>
-            )}
+              {activeHintLevel < 6 && (
+                <button
+                  type="button"
+                  onClick={handleRevealNextHint}
+                  className="px-3 py-1.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white text-xs font-black rounded-xl shadow-xs transition-all flex items-center space-x-1.5 cursor-pointer"
+                >
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>+ Seviye {activeHintLevel + 1} İpucu Aç</span>
+                </button>
+              )}
+            </div>
           </div>
 
           {activeHintLevel === 0 && (
@@ -749,7 +777,7 @@ export const UretTab: React.FC<UretTabProps> = ({
                   />
                 </div>
                 <div className="text-[11px] text-slate-500 pl-5">
-                  👆 Sözlük anlamı ve Türkçe karşılığı için kelimelere tıklayabilirsiniz.
+                  👆 Kelimelere tıklayın: anlamı hedef dilde (İngilizce/Almanca/Sırpça) gösterilir.
                 </div>
               </div>
             )}
@@ -831,6 +859,7 @@ export const UretTab: React.FC<UretTabProps> = ({
             )}
           </div>
         </div>
+        )}
 
         {/* User Answer Input & Voice Record */}
         <div className="space-y-3">
