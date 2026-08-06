@@ -688,7 +688,7 @@ export const UretTab: React.FC<UretTabProps> = ({
           <button
             type="button"
             onClick={() => setShowHints(true)}
-            className="w-full flex items-center justify-between px-4 py-2.5 bg-amber-50/80 border border-amber-200 rounded-xl text-xs font-bold text-amber-900 dark:bg-amber-950/40 dark:border-amber-800/60 dark:text-amber-200 transition-colors cursor-pointer"
+            className="w-full flex items-center justify-between min-h-[44px] px-4 py-2.5 bg-amber-50/80 border border-amber-200 rounded-xl text-xs font-bold text-amber-900 dark:bg-amber-950/40 dark:border-amber-800/60 dark:text-amber-200 transition-colors cursor-pointer"
           >
             <span className="flex items-center gap-1.5">
               <Lightbulb className="w-4 h-4" />
@@ -697,7 +697,7 @@ export const UretTab: React.FC<UretTabProps> = ({
             <ChevronDown className="w-4 h-4" />
           </button>
         ) : (
-        <div className="bg-gradient-to-br from-amber-50/60 via-slate-50 to-indigo-50/40 rounded-2xl p-4 sm:p-5 border-2 border-amber-300/80 dark:border-amber-700/60 shadow-sm space-y-3.5">
+        <div className="bg-gradient-to-br from-amber-50/60 via-slate-50 to-indigo-50/40 rounded-2xl p-4 sm:p-5 border-2 border-amber-300/80 dark:border-amber-700/60 shadow-sm space-y-3.5 max-h-[60vh] overflow-y-auto">
           <div className="flex items-center justify-between flex-wrap gap-2 pb-2 border-b border-amber-200/80">
             <div className="flex items-center space-x-2">
               <div className={`p-1.5 rounded-xl ${activeHintLevel > 0 ? 'bg-amber-500 text-white' : 'bg-slate-200 text-slate-500'}`}>

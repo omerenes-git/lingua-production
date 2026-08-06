@@ -18,6 +18,13 @@ const MEANING_LABELS: Record<TargetLanguage, { label: string; lang: string }> = 
   sr: { label: 'Značenje na srpskom', lang: 'Sırpça' },
 };
 
+// Oturum içi sözlük önbelleği: aynı (dil, kelime) çifti için tekrar API çağrısını engeller.
+const lookupCache = new Map<string, LookupData>();
+
+function lookupCacheKey(language: TargetLanguage, word: string): string {
+  return `${language}:${word.trim().toLocaleLowerCase()}`;
+}
+
 interface VocabularyTooltipProps {
   text: string;
   language: TargetLanguage;
@@ -50,6 +57,16 @@ export const VocabularyTooltip: React.FC<VocabularyTooltipProps> = ({
   };
 
   const lookupWord = async (cleanWord: string) => {
+    const cacheKey = lookupCacheKey(language, cleanWord);
+    const cached = lookupCache.get(cacheKey);
+    if (cached) {
+      setLoading(false);
+      setLookupData(cached);
+      setLookupError(null);
+      setAdded(false);
+      return;
+    }
+
     setLoading(true);
     setLookupData(null);
     setLookupError(null);
@@ -66,14 +83,16 @@ export const VocabularyTooltip: React.FC<VocabularyTooltipProps> = ({
         throw new Error('Sözlük servisi geçerli bir hedef dil anlamı döndürmedi.');
       }
 
-      setLookupData({
+      const result: LookupData = {
         meaningTarget: data.meaningTarget.trim(),
         translationTr: typeof data.translationTr === 'string' ? data.translationTr.trim() : '',
         grammaticalRole: typeof data.grammaticalRole === 'string' ? data.grammaticalRole : '',
         cefrLevel: typeof data.cefrLevel === 'string' ? data.cefrLevel : '',
         exampleSentence: typeof data.exampleSentence === 'string' ? data.exampleSentence : '',
         exampleTranslationTr: typeof data.exampleTranslationTr === 'string' ? data.exampleTranslationTr : '',
-      });
+      };
+      lookupCache.set(cacheKey, result);
+      setLookupData(result);
     } catch (error) {
       setLookupError(error instanceof Error && error.message ? error.message : 'Sözlük sorgusu tamamlanamadı. Lütfen tekrar deneyin.');
     } finally {
@@ -164,7 +183,7 @@ export const VocabularyTooltip: React.FC<VocabularyTooltipProps> = ({
           </div>
 
           {loading ? (
-            <div className="py-4 flex items-center justify-center space-x-2 text-xs text-sky-300"><Loader2 className="w-4 h-4 animate-spin" /><span>Bağlamsal sözlük sorgulanıyor...</span></div>
+            <div className="py-4 flex items-center justify-center space-x-2 text-xs text-sky-300"><Loader2 className="w-4 h-4 animate-spin" /><span>{MEANING_LABELS[language].lang} anlam aranıyor...</span></div>
           ) : lookupError ? (
             <div className="space-y-3">
               <div className="rounded-xl border border-amber-700/60 bg-amber-950/50 p-3 text-xs text-amber-100">

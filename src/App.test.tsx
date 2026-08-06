@@ -231,3 +231,76 @@ describe('Local data survives evaluation-service failures (offline-safe recordin
     expect(history[enKey]).toBe(1);
   });
 });
+
+describe('Hikâye bölümü kaldırıldı', () => {
+  it('navigasyonda Hikâyeler butonu görünmez (yalnızca menüden gizlenmemiş)', async () => {
+    render(<App />);
+    expect(screen.queryByRole('button', { name: /Hikâyeler/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Hikâye Oku/ })).not.toBeInTheDocument();
+  });
+});
+
+describe('İpucu paneli kompakt ve toggle', () => {
+  it('başlangıçta kapalıdır: yalnızca kompakt "İpucu Al" butonu görünür, panel açık değildir', async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await goToUretTab(user);
+    expect(screen.getByRole('button', { name: /İpucu Al/ })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Küçült/ })).not.toBeInTheDocument();
+    expect(screen.queryByText(/Adım Adım Dil Koçu İpucu Rehberi/)).not.toBeInTheDocument();
+  });
+
+  it('butona basınca açılır, Küçült ile tekrar kapanır', async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await goToUretTab(user);
+
+    await user.click(screen.getByRole('button', { name: /İpucu Al/ }));
+    expect(await screen.findByRole('button', { name: /Küçült/ })).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /Küçült/ }));
+    expect(screen.getByRole('button', { name: /İpucu Al/ })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Küçült/ })).not.toBeInTheDocument();
+  });
+});
+
+describe('Gramer hatası kaydı ve kişiselleştirme veri akışı', () => {
+  it('Emin + kritik hata, errorCategory ile hata listesine kaydedilir', async () => {
+    mockEvaluationFetch({
+      overallVerdict: 'incorrect',
+      errorSeverity: 'critical',
+      errors: [
+        { category: 'grammar', message: 'Artikel hatası', suggestion: 'das Haus' },
+      ],
+      explanationTr: 'Artikel hatası var.',
+    });
+    const user = userEvent.setup();
+    render(<App />);
+    await goToUretTab(user);
+    await submitOneAnswer(user, 'Ich habe grosse Haus');
+
+    const saved = JSON.parse(localStorage.getItem('lingua_fossilized') || '[]');
+    expect(saved.length).toBeGreaterThan(0);
+    expect(saved[0].errorCategory).toBe('grammar');
+    expect(saved[0].userAnswer).toBe('Ich habe grosse Haus');
+    expect(saved[0].correctReference).toBeTruthy();
+  });
+
+  it('düşük güvenli hata (emin olmayan) fossilized kayda dönüşmez', async () => {
+    mockEvaluationFetch({
+      overallVerdict: 'incorrect',
+      errorSeverity: 'critical',
+      errors: [{ category: 'grammar', message: 'Hata' }],
+    });
+    const user = userEvent.setup();
+    render(<App />);
+    await goToUretTab(user);
+
+    // Kullanıcı güvenini "Emin Değil" yap
+    await user.click(screen.getByRole('button', { name: 'Emin Değil' }));
+    await submitOneAnswer(user, 'Ich habe grosse Haus');
+
+    const saved = JSON.parse(localStorage.getItem('lingua_fossilized') || '[]');
+    expect(saved.length).toBe(0);
+  });
+});
