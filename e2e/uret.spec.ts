@@ -39,6 +39,20 @@ test.describe('Üret bölümü — Almanca', () => {
     await expect(page.locator('[data-active-context-type="uret"]')).toHaveAttribute('data-evaluation-verdict', /correct|natural_variant|minor_issue|major_issue|incorrect/, { timeout: 90_000 });
   });
 
+  test('rehber banner varsayılan kapalı, butonla açılır ve kapanır (sadeleştirme regresyonu)', async ({ page }) => {
+    // Varsayılan kapalı: uzun tavsiye metni görünmemeli, buton görünür
+    const bannerBtn = page.getByRole('button', { name: /rehberini aç veya kapat/i });
+    await expect(bannerBtn).toBeVisible();
+    await expect(bannerBtn).toHaveAttribute('aria-expanded', 'false');
+    // Aç → tavsiye metni görünür (Almanca rehber: V2 kuralı/zihinsel yükü)
+    await bannerBtn.click();
+    await expect(bannerBtn).toHaveAttribute('aria-expanded', 'true');
+    await expect(page.getByText(/V2 kuralı|zihinsel yükü|Özne \+ Fiil \+ Nesne|SVO|bağlaçsız/i).first()).toBeVisible();
+    // Kapat → tekrar gizli
+    await bannerBtn.click();
+    await expect(bannerBtn).toHaveAttribute('aria-expanded', 'false');
+  });
+
   test('ipucu varsayılan kapalı, kompakt butonla açılır, seviyeler artar', async ({ page }) => {
     // Kapalı: ipucu içeriği görünmemeli, buton görünür
     await expect(page.getByText(/Adım Adım Dil Koçu İpucu Rehberi/i)).not.toBeVisible();

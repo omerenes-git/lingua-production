@@ -248,7 +248,7 @@ export const FloatingAssistantChat: React.FC<FloatingAssistantChatProps> = ({
   ];
 
   return (
-    <div className="fixed bottom-5 right-5 z-50 font-sans">
+    <div className="fixed bottom-5 right-5 z-50 font-sans" style={{ bottom: '5.5rem' }}>
       {isOpen && (
         <div className="mb-3 w-96 max-w-[calc(100vw-2.5rem)] h-[530px] bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl flex flex-col overflow-hidden transition-all duration-200 ease-out animate-in fade-in slide-in-from-bottom-4">
           <div className="p-3.5 bg-gradient-to-r from-sky-600 to-indigo-600 text-white flex items-center justify-between shadow-xs">

@@ -105,6 +105,7 @@ export const UretTab: React.FC<UretTabProps> = ({
   const [showGrammarModal, setShowGrammarModal] = useState(false);
   const [showPronunciationModal, setShowPronunciationModal] = useState(false);
   const [showMnemonicModal, setShowMnemonicModal] = useState(false);
+  const [showCoachGuide, setShowCoachGuide] = useState(false);
 
   // Total prompts available for the current language/domain/intensity filter (for the "Kart X / Y" counter).
   const availablePrompts = prompts.filter(
@@ -590,13 +591,18 @@ export const UretTab: React.FC<UretTabProps> = ({
         </div>
       </div>
 
-      {/* Language Learning Expert Pedagogical Guidance Banner */}
-      <div className="bg-gradient-to-r from-sky-900 via-indigo-900 to-slate-900 text-white rounded-3xl p-5 shadow-lg space-y-3 relative overflow-hidden border border-sky-800">
+      {/* Language Learning Expert Pedagogical Guidance Banner (varsayılan kapalı — ekranı sadeleştirir) */}
+      <div className="bg-gradient-to-r from-sky-900 via-indigo-900 to-slate-900 text-white rounded-3xl shadow-lg relative overflow-hidden border border-sky-800">
         <div className="absolute top-0 right-0 p-6 opacity-10 pointer-events-none">
           <Brain className="w-40 h-40 text-white" />
         </div>
-
-        <div className="flex items-center justify-between flex-wrap gap-2 border-b border-sky-800/80 pb-3 relative z-10">
+        <button
+          type="button"
+          onClick={() => setShowCoachGuide((open) => !open)}
+          aria-expanded={showCoachGuide}
+          aria-label="Dil öğrenme uzmanı rehberini aç veya kapat"
+          className="w-full flex items-center justify-between flex-wrap gap-2 p-4 relative z-10 text-left cursor-pointer"
+        >
           <div className="flex items-center space-x-2.5">
             <div className="p-2 bg-amber-500 text-slate-950 rounded-2xl shadow-xs flex items-center justify-center font-black">
               <Sparkles className="w-5 h-5" />
@@ -605,18 +611,25 @@ export const UretTab: React.FC<UretTabProps> = ({
               <h3 className="text-sm sm:text-base font-black tracking-tight text-white flex items-center gap-2">
                 {currentCoachGuide.title}
               </h3>
-              <p className="text-xs text-sky-200 font-medium">{currentCoachGuide.subtitle}</p>
+              <p className="text-xs text-sky-200 font-medium">{showCoachGuide ? 'Kapatmak için tıkla' : 'Açmak için tıkla'}</p>
             </div>
           </div>
-
           <span className="px-3 py-1 bg-amber-400 text-slate-950 font-black text-xs rounded-full shadow-xs border border-amber-300">
-            {currentCoachGuide.strategyBadge}
+            {showCoachGuide ? '▲ Gizle' : '▼ İpucunu göster'}
           </span>
-        </div>
-
-        <p className="text-xs sm:text-sm text-sky-100 leading-relaxed font-medium relative z-10 bg-white/10 p-3.5 rounded-2xl backdrop-blur-xs border border-white/10">
-          {currentCoachGuide.advice}
-        </p>
+        </button>
+        {showCoachGuide && (
+          <div className="px-4 pb-4 relative z-10 space-y-3">
+            <div className="flex items-center justify-between flex-wrap gap-2 border-t border-sky-800/80 pt-3">
+              <span className="px-3 py-1 bg-amber-400 text-slate-950 font-black text-xs rounded-full shadow-xs border border-amber-300">
+                {currentCoachGuide.strategyBadge}
+              </span>
+            </div>
+            <p className="text-xs sm:text-sm text-sky-100 leading-relaxed font-medium bg-white/10 p-3.5 rounded-2xl backdrop-blur-xs border border-white/10">
+              {currentCoachGuide.advice}
+            </p>
+          </div>
+        )}
       </div>
 
       {/* Main Prompt Card */}

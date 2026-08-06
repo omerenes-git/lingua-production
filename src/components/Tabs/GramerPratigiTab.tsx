@@ -939,14 +939,19 @@ export const GramerPratigiTab: React.FC<GramerPratigiTabProps> = ({
               <button
                 type="button"
                 onClick={() => void startQuiz()}
-                disabled={Object.keys(categoryCounts).length === 0}
+                disabled={isQuizLoading}
                 className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white text-xs font-black shadow-md disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5 cursor-pointer"
-                title={Object.keys(categoryCounts).length === 0 ? 'Önce Üret bölümünde pratik yaparak hata kaydı oluştur' : 'Hatalarına göre test oluştur'}
+                title={Object.keys(categoryCounts).length === 0 ? 'Henüz hata kaydın yok; genel seviyene uygun bir test üretilir' : 'Hatalarına göre test oluştur'}
               >
                 <Target className="w-4 h-4" /> Testi Başlat (+10 Puan/Doğru)
               </button>
             )}
           </div>
+          {Object.keys(categoryCounts).length === 0 && quizQuestions.length === 0 && !quizFinished && (
+            <p className="text-[11px] text-slate-500 leading-relaxed">
+              Henüz hata kaydın yok — test yine de üretilir, genel seviyeni ölçer. Üret bölümünde pratik yaptıkça test hatalarına göre kişiselleşir.
+            </p>
+          )}
 
           {quizStatus && (
             <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-900 leading-relaxed">{quizStatus}</div>
