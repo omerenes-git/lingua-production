@@ -10,7 +10,9 @@
     "start": "node dist/server.mjs",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:e2e": "playwright test",
+    "test:ai": "node scripts/ai-evaluate-regression.mjs"
   },
   "dependencies": {
     "clsx": "^2.1.1",
@@ -23,6 +25,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.39.5",
+    "@playwright/test": "^1.62.1",
     "@testing-library/jest-dom": "^7.0.0",
     "@testing-library/react": "^16.3.2",
     "@testing-library/user-event": "^14.6.1",

@@ -25,6 +25,10 @@ node_modules/
 .DS_Store
 Thumbs.db
 
+# Playwright test artifacts
+test-results/
+playwright-report/
+
 # Supabase local tooling
 supabase/.temp/
 

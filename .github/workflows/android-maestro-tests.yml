@@ -1,0 +1,105 @@
+name: Android Maestro E2E Tests
+
+# Gerçek kullanıcı benzeri Android testleri: GitHub Actions emülatöründe Maestro.
+# (VPS'te KVM yok; hosted Linux/macOS runner'larda emülatör boot EDEMİYOR — 2026-08-06
+# 4 deneme. Bu yüzden yalnızca workflow_dispatch ile çalışır; PR'da zorunlu check DEĞİLDİR.
+# Fiziksel cihaz veya KVM'li self-hosted runner olunca PR tetiklemesi geri eklenebilir.)
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: maestro-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  maestro-android:
+    # macOS runner: Apple Hypervisor ile donanım hızlandırması (Linux hosted runner'larda
+    # KVM yok — üç denemede emülatör boot edemedi). Action SDK'yı kendisi kurar.
+    runs-on: macos-14
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Install web dependencies
+        run: npm ci
+
+      - name: Install Capacitor build tooling
+        run: npm install --no-save --package-lock=false @capacitor/core@latest @capacitor/cli@latest @capacitor/android@latest
+
+      - name: Build mobile web bundle
+        run: npm run build
+        env:
+          CAPACITOR_BUILD: 'true'
+
+      - name: Configure Capacitor and generate Android project
+        run: |
+          cat > capacitor.config.json <<'JSON'
+          {
+            "appId": "com.enes.lingua",
+            "appName": "Lingua",
+            "webDir": "dist",
+            "server": {
+              "androidScheme": "https"
+            }
+          }
+          JSON
+          npx cap add android
+          npx cap sync android
+
+      - name: Build debug APK
+        run: |
+          chmod +x android/gradlew
+          cd android
+          ./gradlew assembleDebug --no-daemon
+
+      - name: Install Maestro CLI
+        run: |
+          curl -Ls "https://get.maestro.mobile.dev" | bash
+          echo "$HOME/.maestro/bin" >> "$GITHUB_PATH"
+
+      - name: Run Maestro tests on emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 29
+          arch: x86_64
+          profile: pixel_5
+          disable-animations: true
+          force-avd-creation: true
+          emulator-boot-timeout: 900
+          emulator-options: -no-window -no-snapshot -noaudio -no-boot-anim
+          script: |
+            adb start-server || true
+            adb wait-for-device
+            adb shell input keyevent 82 || true
+            adb install android/app/build/outputs/apk/debug/app-debug.apk
+            export E2E_TEST_DE_EMAIL="${{ secrets.E2E_TEST_DE_EMAIL }}"
+            export E2E_TEST_DE_PASSWORD="${{ secrets.E2E_TEST_DE_PASSWORD }}"
+            maestro test .maestro/ --format junit --output maestro-report/
+        env:
+          E2E_TEST_DE_EMAIL: ${{ secrets.E2E_TEST_DE_EMAIL }}
+          E2E_TEST_DE_PASSWORD: ${{ secrets.E2E_TEST_DE_PASSWORD }}
+
+      - name: Upload Maestro report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: maestro-report
+          path: maestro-report/
+          retention-days: 14

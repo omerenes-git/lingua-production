@@ -329,7 +329,7 @@ export const SohbetTab: React.FC<SohbetTabProps> = ({ currentLanguage }) => {
             placeholder={`${currentLanguage.toUpperCase()} dilinde bir şey yaz...`}
             className="flex-1 p-2.5 bg-slate-50 border border-slate-300 rounded-2xl text-xs sm:text-sm font-medium"
           />
-          <button onClick={() => void handleSend()} disabled={!userInput.trim() || isSending} className="p-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-200 text-white rounded-2xl"><Send className="w-4 h-4" /></button>
+          <button onClick={() => void handleSend()} disabled={!userInput.trim() || isSending} aria-label="Mesajı gönder" title="Mesajı gönder" className="p-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-200 text-white rounded-2xl"><Send className="w-4 h-4" /></button>
         </div>
       </div>
     </div>

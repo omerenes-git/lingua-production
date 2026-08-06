@@ -1,0 +1,30 @@
+# Maestro Android E2E — sekme gezinme + Üret + ipucu
+appId: com.enes.lingua
+---
+- launchApp:
+    clearState: true
+- tapOn: "E-posta"
+- inputText: ${E2E_TEST_DE_EMAIL}
+- tapOn: "Şifre"
+- inputText: ${E2E_TEST_DE_PASSWORD}
+- tapOn: "Uygulamaya gir"
+- extendedWaitUntil:
+    visible: "Bugün"
+    timeout: 20000
+# Sekmeler
+- tapOn: "Üret (Pratik)"
+- assertVisible: "Aşağıdaki Türkçe cümlenin"
+# İpucu: başlangıçta kapalı, butonla açılır
+- tapOn: "İpucu Al"
+- assertVisible: "İpucu Rehberi"
+- tapOn: "+ Seviye 1 İpucu Aç"
+- assertVisible: "1. Cümle İskeleti"
+- takeScreenshot: e2e-uret-ipucu
+# Gramer Koçu
+- tapOn: "Gramer Koçu"
+- assertVisible: "Kişisel Gramer Koçu"
+- takeScreenshot: e2e-gramer
+# Nasıl Söylerim?
+- tapOn: "Nasıl Söylerim?"
+- assertVisible: "Bunu Nasıl Söylerim"
+- takeScreenshot: e2e-nasil
