@@ -1,0 +1,17 @@
+# Maestro Android E2E — temel akış
+# Uygulama: Lingua (com.enes.lingua — CI Capacitor yapılandırması)
+appId: com.enes.lingua
+---
+- launchApp:
+    clearState: true
+- assertVisible: "Güvenli giriş"
+- tapOn: "E-posta"
+- inputText: ${E2E_TEST_DE_EMAIL}
+- tapOn: "Şifre"
+- inputText: ${E2E_TEST_DE_PASSWORD}
+- tapOn: "Uygulamaya gir"
+- extendedWaitUntil:
+    visible: "Bugün"
+    timeout: 20000
+- assertVisible: "Üret (Pratik)"
+- takeScreenshot: e2e-login-ok
