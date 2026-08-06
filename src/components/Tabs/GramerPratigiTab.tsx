@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { FossilizedError, LearningItem, TargetLanguage } from '../../types';
+import { ErrorCategory, FossilizedError, LearningItem, TargetLanguage } from '../../types';
 import { callLinguaApi } from '../../lib/linguaApi';
 import { VocabularyTooltip } from '../VocabularyTooltip';
 import {
@@ -7,11 +7,14 @@ import {
   BookOpen,
   Brain,
   CheckCircle2,
+  Flame,
   Lightbulb,
   Loader2,
   RefreshCw,
   Send,
   Sparkles,
+  Target,
+  Trophy,
 } from 'lucide-react';
 
 interface GrammarDrill {
@@ -163,6 +166,120 @@ const normalize = (value: string) =>
     .replace(/\s+/g, ' ')
     .trim();
 
+// --- Kişisel Gramer Koçu: kategori bazlı 2-3 dakikalık mini dersler ---
+const CATEGORY_LESSONS: Record<ErrorCategory, { label: string; emoji: string; summary: string; steps: string[]; tip: string }> = {
+  grammar: {
+    label: 'Dilbilgisi & Ekler',
+    emoji: '📘',
+    summary: 'Hedef dilin çekim ekleri ve gramer kalıpları Türkçeden farklı işler.',
+    steps: [
+      'Cümleyi kurarken önce "hangi zaman/kip" olduğuna karar ver: geçmiş, şimdiki, gelecek...',
+      'Fiili özneye göre çekimle: İngilizcede I go / he goes, Almancada ich habe / er hat, Sırpçada ja imam / on ima.',
+      'Ekleri Türkçedeki karşılıklarıyla birebir eşleştirmeye çalışma; kalıbı bir bütün olarak ezberle.',
+    ],
+    tip: 'Yanlış yaptığın cümleyi yüksek sesle oku. Kulağa "garip" geliyorsa büyük ihtimalle ek veya kip hatasıdır.',
+  },
+  word_order: {
+    label: 'Kelime Sırası',
+    emoji: '🔀',
+    summary: 'Türkçe özne-nesne-fiil (SOV) düzenini kullanır; İngilizce ve Almanca özne-fiil-nesne (SVO), Sırpça esnek ama SVO temellidir.',
+    steps: [
+      'Temel düzeni hatırla: Özne + Fiil + Nesne (örn. "I drink coffee", "Ich trinke Kaffee").',
+      'Almancada ana cümlede çekimli fiil daima 2. sıradadır; yan cümlede (wenn, dass...) fiil sona gider.',
+      'Soru cümlelerinde fiil öznenin önüne geçer: "Do you like...?" / "Hast du...?".',
+    ],
+    tip: 'Cümleni kurduktan sonra kelimeleri özne-fiil-nesne sırasıyla gözden geçir.',
+  },
+  vocabulary: {
+    label: 'Kelime Seçimi',
+    emoji: '🗣️',
+    summary: 'Anlam olarak yakın ama bağlama uymayan kelimeler seçiliyor.',
+    steps: [
+      'Türkçeden kelime kelime çevirme; hedef dilde o bağlamda hangi kelimenin doğal olduğunu düşün.',
+      'Aynı Türkçe kelimenin hedef dilde birden çok karşılığı olabilir (örn. "yapmak": make/do).',
+      'Bilmediğin kelime yerine bildiğin güvenli bir eş anlamlıyla cümleyi tamamla.',
+    ],
+    tip: 'Kelime seçiminde takılırsan o bağlamdaki doğal karşılığı sözlükte değil, örnek cümlelerde ara.',
+  },
+  spelling: {
+    label: 'Yazım',
+    emoji: '✍️',
+    summary: 'Hedef dilin yazım kuralları ve aksan işaretleri atlanıyor.',
+    steps: [
+      'Uzun ve aksanlı harflere dikkat et (Almanca ä/ö/ü/ß, Sırpça č/ć/š/ž).',
+      'Kelimeyi telaffuzuna göre değil, yazımına göre yaz; İngilizcede telaffuz-yazım farkı büyüktür.',
+      'Büyük harf kurallarını kontrol et (Almancada tüm isimler büyük yazılır).',
+    ],
+    tip: 'Şüpheli harf varsa önce yazımı kontrol et, sonra gönder.',
+  },
+  style: {
+    label: 'Üslup & Doğallık',
+    emoji: '🎭',
+    summary: 'Cümle gramer olarak doğru ama hedef dilde kulağa yapay geliyor.',
+    steps: [
+      'Resmi/gündelik ayrımını gözet: "Could you..." kibar, "Can you..." gündelik, "Give me..." kaba olabilir.',
+      'Kısaltmalar ve kalıpları doğal kullan (örn. yazılı dilde "gonna" yerine "going to").',
+      'Hedef dilde sık kullanılan kalıp ifadeleri ezberle; çeviri değil, kalıp üret.',
+    ],
+    tip: 'Kendine sor: "Bu cümleyi hedef dilde bir anadili böyle söyler miydi?"',
+  },
+};
+
+const LANGUAGE_GRAMMAR_NOTES: Record<TargetLanguage, Partial<Record<ErrorCategory, string>>> = {
+  en: {
+    grammar: 'İngilizcede -s takısı (3. tekil), -ing ve düzensiz fiiller en sık hata kaynağıdır.',
+    word_order: 'İngilizce sorularda do/does yardımcı fiili öznenin önüne gelir.',
+    vocabulary: 'make/do, say/tell, borrow/lend gibi ikililer bağlama göre değişir.',
+    spelling: 'through/though/thought gibi kelimeler telaffuzdan farklı yazılır.',
+    style: 'Kibar istekler genelde "Could you...?" ile başlar.',
+  },
+  de: {
+    grammar: 'Almancada isimlerin cinsiyeti (der/die/das) ve Akkusativ/Dativ ekleri kritiktir.',
+    word_order: 'Almancada yan cümlelerde (wenn/dass) fiil cümlenin sonuna gider.',
+    vocabulary: 'Almancada birleşik isimler yaygındır (Handschuh = el + ayakkabı → eldiven).',
+    spelling: 'ä, ö, ü ve ß harfleri atlanmamalı; tüm isimler büyük harfle başlar.',
+    style: 'Sie (resmi) / du (samimi) ayrımı konuşmanın tonunu belirler.',
+  },
+  sr: {
+    grammar: 'Sırpçada isimlerin 7 hâli vardır; en çok akuzativ (nesne hâli) karıştırılır.',
+    word_order: 'Sırpça sıralama esnektir ama enklitikler (ga, se, mu) kurala göre yerleşir.',
+    vocabulary: 'Vurgu ve uzunluk anlamı değiştirebilir (grad = şehir / dolu).',
+    spelling: 'č/ć, š/ž, dž/dj farklı seslerdir; karıştırılmamalı.',
+    style: 'molim hem "lütfen" hem "rica ederim"dir; bağlama göre kullanılır.',
+  },
+};
+
+// --- Oyunlaştırılmış hata testi ---
+interface QuizQuestion {
+  id: string;
+  fossilizedErrorId: string | null;
+  errorCategory: string;
+  turkishPrompt: string;
+  options: string[];
+  correctOptionIndex: number;
+  explanationTr: string;
+}
+
+interface QuizResponse {
+  quizTitle?: string;
+  questions?: unknown[];
+}
+
+const validQuizQuestion = (value: unknown): value is QuizQuestion => {
+  if (!value || typeof value !== 'object') return false;
+  const question = value as Record<string, unknown>;
+  return Boolean(
+    typeof question.turkishPrompt === 'string' &&
+      Array.isArray(question.options) &&
+      question.options.length >= 2 &&
+      typeof question.correctOptionIndex === 'number',
+  );
+};
+
+const GRAMMAR_POINTS_KEY = 'lingua_grammar_points';
+const GRAMMAR_STREAK_KEY = 'lingua_grammar_streak';
+const GRAMMAR_LAST_QUIZ_DATE_KEY = 'lingua_grammar_last_quiz_date';
+
 const validDrill = (value: unknown): value is GrammarDrill => {
   if (!value || typeof value !== 'object') return false;
   const drill = value as Record<string, unknown>;
@@ -212,6 +329,23 @@ export const GramerPratigiTab: React.FC<GramerPratigiTabProps> = ({
   const [isEvaluating, setIsEvaluating] = useState(false);
   const [isHintLoading, setIsHintLoading] = useState(false);
 
+  // Kişisel Gramer Koçu: hata profili + mini ders + oyunlaştırılmış test
+  const [selectedLessonCategory, setSelectedLessonCategory] = useState<ErrorCategory | null>(null);
+  const [points, setPoints] = useState<number>(() => {
+    try { return Number(localStorage.getItem(GRAMMAR_POINTS_KEY)) || 0; } catch { return 0; }
+  });
+  const [streak, setStreak] = useState<number>(() => {
+    try { return Number(localStorage.getItem(GRAMMAR_STREAK_KEY)) || 0; } catch { return 0; }
+  });
+  const [quizTitle, setQuizTitle] = useState('');
+  const [quizQuestions, setQuizQuestions] = useState<QuizQuestion[]>([]);
+  const [quizIndex, setQuizIndex] = useState(0);
+  const [selectedOption, setSelectedOption] = useState<number | null>(null);
+  const [quizScore, setQuizScore] = useState(0);
+  const [quizFinished, setQuizFinished] = useState(false);
+  const [isQuizLoading, setIsQuizLoading] = useState(false);
+  const [quizStatus, setQuizStatus] = useState<string | null>(null);
+
   useEffect(() => {
     setDrills(CURATED_DRILLS[currentLanguage]);
     setSource('curated');
@@ -226,6 +360,30 @@ export const GramerPratigiTab: React.FC<GramerPratigiTabProps> = ({
     const sameLevel = drills.filter((drill) => drill.cefrLevel === cefrLevel);
     return sameLevel.length ? sameLevel : drills;
   }, [drills, cefrLevel]);
+
+  // Hata profili: kayıtlı hataları kategorilere göre sayar (kişiselleştirmenin temeli)
+  const categoryCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const error of fossilizedErrors) {
+      const category = (error as unknown as { errorCategory?: string }).errorCategory;
+      if (category) counts[category] = (counts[category] || 0) + 1;
+    }
+    return counts;
+  }, [fossilizedErrors]);
+
+  const topCategory = useMemo<ErrorCategory | null>(() => {
+    let top: ErrorCategory | null = null;
+    let topCount = 0;
+    for (const [category, count] of Object.entries(categoryCounts)) {
+      if (count > topCount) {
+        top = category as ErrorCategory;
+        topCount = count;
+      }
+    }
+    return top;
+  }, [categoryCounts]);
+
+  const activeLessonCategory = selectedLessonCategory ?? topCategory ?? 'grammar';
 
   const currentDrill = visibleDrills[Math.min(activeIndex, Math.max(0, visibleDrills.length - 1))];
   const languageErrors = fossilizedErrors.filter((error) => {
@@ -379,18 +537,287 @@ export const GramerPratigiTab: React.FC<GramerPratigiTabProps> = ({
     }
   };
 
+  const awardPoints = (earned: number) => {
+    setPoints((previous) => {
+      const next = previous + earned;
+      try { localStorage.setItem(GRAMMAR_POINTS_KEY, String(next)); } catch { /* localStorage kullanılamıyor */ }
+      return next;
+    });
+  };
+
+  const updateStreak = () => {
+    const today = new Date().toISOString().slice(0, 10);
+    let lastDate: string | null = null;
+    try { lastDate = localStorage.getItem(GRAMMAR_LAST_QUIZ_DATE_KEY); } catch { /* localStorage kullanılamıyor */ }
+    setStreak((previous) => {
+      let next = previous;
+      if (lastDate !== today) {
+        const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+        next = lastDate === yesterday ? previous + 1 : 1;
+      }
+      try {
+        localStorage.setItem(GRAMMAR_STREAK_KEY, String(next));
+        localStorage.setItem(GRAMMAR_LAST_QUIZ_DATE_KEY, today);
+      } catch { /* localStorage kullanılamıyor */ }
+      return next;
+    });
+  };
+
+  const startQuiz = async () => {
+    setIsQuizLoading(true);
+    setQuizStatus(null);
+    setQuizFinished(false);
+    setQuizIndex(0);
+    setSelectedOption(null);
+    setQuizScore(0);
+    setQuizQuestions([]);
+    try {
+      const errorTopics = languageErrors
+        .slice(0, 8)
+        .map((error) => {
+          const item = error as unknown as Record<string, unknown>;
+          const category = typeof item.errorCategory === 'string' ? item.errorCategory : '';
+          const description = String(item.errorDescription || '').trim();
+          return category ? `[${category}] ${description}` : description;
+        })
+        .filter(Boolean);
+
+      const payload = await callLinguaApi<QuizResponse>('/api/generate-error-quiz', {
+        language: currentLanguage,
+        errorTopics,
+        focusCategory: topCategory ?? undefined,
+      });
+      const questions = Array.isArray(payload.questions) ? payload.questions.filter(validQuizQuestion) : [];
+      if (!questions.length) throw new Error('Sunucu geçerli test sorusu döndürmedi.');
+      setQuizQuestions(questions);
+      setQuizTitle(typeof payload.quizTitle === 'string' && payload.quizTitle.trim() ? payload.quizTitle : 'Kişisel Hata Testi');
+    } catch (error) {
+      setQuizStatus(`Test oluşturulamadı: ${error instanceof Error ? error.message : 'Bilinmeyen hata'}. Hata kaydın yoksa önce Üret bölümünde pratik yap.`);
+    } finally {
+      setIsQuizLoading(false);
+    }
+  };
+
+  const selectQuizOption = (optionIndex: number) => {
+    if (selectedOption !== null) return;
+    setSelectedOption(optionIndex);
+    const question = quizQuestions[quizIndex];
+    if (optionIndex === question.correctOptionIndex) {
+      setQuizScore((previous) => previous + 1);
+      awardPoints(10);
+    }
+  };
+
+  const nextQuizQuestion = () => {
+    if (quizIndex >= quizQuestions.length - 1) {
+      setQuizFinished(true);
+      updateStreak();
+    } else {
+      setQuizIndex((previous) => previous + 1);
+      setSelectedOption(null);
+    }
+  };
+
   if (!currentDrill) {
     return <div className="p-6 text-sm text-slate-600">Bu dil için gramer alıştırması bulunamadı.</div>;
   }
 
   return (
     <div className="max-w-5xl mx-auto space-y-5">
+      {/* Kişisel Gramer Koçu — hata profili + mini ders + oyunlaştırılmış test */}
+      <section className="bg-white rounded-3xl border-2 border-violet-200 shadow-sm p-5 space-y-4">
+        <div className="flex items-center gap-2 flex-wrap">
+          <Brain className="w-5 h-5 text-violet-600" />
+          <h2 className="font-black text-slate-900">Kişisel Gramer Koçu</h2>
+          <span className="ml-auto flex items-center gap-3 text-xs font-bold">
+            <span className="flex items-center gap-1 text-amber-600"><Trophy className="w-4 h-4" /> {points} Puan</span>
+            <span className="flex items-center gap-1 text-orange-600"><Flame className="w-4 h-4" /> {streak} Gün Seri</span>
+          </span>
+        </div>
+        <p className="text-xs text-slate-500 leading-relaxed">
+          Üret bölümünde yaptığın hatalardan ders çıkarır: en zayıf olduğun alanı bulur, 2-3 dakikalık mini ders verir ve seni o konuda test eder.
+        </p>
+
+        {/* Hata profili */}
+        <div>
+          <span className="text-[10px] uppercase tracking-wider font-black text-violet-600">Hata Profilin</span>
+          {Object.keys(categoryCounts).length === 0 ? (
+            <div className="mt-2 p-3 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-600 leading-relaxed">
+              Henüz kayıtlı hatan yok. Üret bölümünde pratik yaptıkça burada en çok zorlandığın alanlar ve sana özel dersler görünecek.
+            </div>
+          ) : (
+            <div className="mt-2 flex flex-wrap gap-2">
+              {(Object.keys(CATEGORY_LESSONS) as ErrorCategory[]).map((category) => {
+                const count = categoryCounts[category] || 0;
+                if (count === 0) return null;
+                return (
+                  <button
+                    key={category}
+                    type="button"
+                    onClick={() => setSelectedLessonCategory(category)}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
+                      activeLessonCategory === category
+                        ? 'bg-violet-600 text-white border-violet-600 shadow-xs'
+                        : 'bg-white text-slate-600 border-slate-200 hover:border-violet-400'
+                    }`}
+                    title="Bu konudaki mini dersi aç"
+                  >
+                    {CATEGORY_LESSONS[category].emoji} {CATEGORY_LESSONS[category].label} ×{count}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* 2-3 dakikalık mini ders */}
+        <div className="rounded-2xl border border-violet-100 bg-gradient-to-br from-violet-50/70 to-sky-50/50 p-4 space-y-3">
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <span className="text-xs font-black text-violet-900">
+              ⏱️ 2-3 Dakikalık Mini Ders: {CATEGORY_LESSONS[activeLessonCategory].emoji} {CATEGORY_LESSONS[activeLessonCategory].label}
+            </span>
+            {selectedLessonCategory && (
+              <button
+                type="button"
+                onClick={() => setSelectedLessonCategory(null)}
+                className="text-[10px] text-violet-500 hover:text-violet-700 font-bold underline cursor-pointer"
+              >
+                En zayıf alanıma dön
+              </button>
+            )}
+          </div>
+          <p className="text-xs text-slate-700 font-medium leading-relaxed">{CATEGORY_LESSONS[activeLessonCategory].summary}</p>
+          <ol className="space-y-1.5">
+            {CATEGORY_LESSONS[activeLessonCategory].steps.map((step, index) => (
+              <li key={index} className="text-xs text-slate-700 flex gap-2 leading-relaxed">
+                <span className="w-4 h-4 rounded-full bg-violet-200 text-violet-800 text-[10px] font-black flex items-center justify-center shrink-0 mt-0.5">{index + 1}</span>
+                {step}
+              </li>
+            ))}
+          </ol>
+          {LANGUAGE_GRAMMAR_NOTES[currentLanguage][activeLessonCategory] && (
+            <div className="p-2.5 rounded-xl bg-white/70 border border-violet-200/60 text-[11px] text-violet-900 leading-relaxed">
+              <strong>{currentLanguage.toUpperCase()} için:</strong> {LANGUAGE_GRAMMAR_NOTES[currentLanguage][activeLessonCategory]}
+            </div>
+          )}
+          <div className="p-2.5 rounded-xl bg-amber-50 border border-amber-200/70 text-[11px] text-amber-900 leading-relaxed">
+            💡 <strong>Pratik ipucu:</strong> {CATEGORY_LESSONS[activeLessonCategory].tip}
+          </div>
+        </div>
+
+        {/* Oyunlaştırılmış hata testi */}
+        <div className="rounded-2xl border border-slate-200 p-4 space-y-3">
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <span className="text-xs font-black text-slate-900">🎮 Kişisel Hata Testi</span>
+            {!isQuizLoading && quizQuestions.length === 0 && !quizFinished && (
+              <button
+                type="button"
+                onClick={() => void startQuiz()}
+                disabled={Object.keys(categoryCounts).length === 0}
+                className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white text-xs font-black shadow-md disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5 cursor-pointer"
+                title={Object.keys(categoryCounts).length === 0 ? 'Önce Üret bölümünde pratik yaparak hata kaydı oluştur' : 'Hatalarına göre test oluştur'}
+              >
+                <Target className="w-4 h-4" /> Testi Başlat (+10 Puan/Doğru)
+              </button>
+            )}
+          </div>
+
+          {quizStatus && (
+            <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-900 leading-relaxed">{quizStatus}</div>
+          )}
+
+          {isQuizLoading && (
+            <div className="flex items-center gap-2 text-xs text-violet-700 py-3">
+              <Loader2 className="w-4 h-4 animate-spin" /> Hatalarına göre test hazırlanıyor...
+            </div>
+          )}
+
+          {!isQuizLoading && quizQuestions.length > 0 && !quizFinished && (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between text-[10px] font-bold text-slate-500">
+                <span>{quizTitle}</span>
+                <span>Soru {quizIndex + 1}/{quizQuestions.length} · Doğru: {quizScore}</span>
+              </div>
+              <div className="h-1.5 rounded-full bg-slate-100 overflow-hidden">
+                <div
+                  className="h-full bg-gradient-to-r from-violet-500 to-fuchsia-500 transition-all"
+                  style={{ width: `${((quizIndex + (selectedOption !== null ? 1 : 0)) / quizQuestions.length) * 100}%` }}
+                />
+              </div>
+              <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 text-sm font-bold text-slate-900 leading-relaxed">
+                {quizQuestions[quizIndex].turkishPrompt}
+              </div>
+              <div className="space-y-2">
+                {quizQuestions[quizIndex].options.map((option, optionIndex) => {
+                  const isCorrectOption = optionIndex === quizQuestions[quizIndex].correctOptionIndex;
+                  let style = 'bg-white border-slate-200 text-slate-700 hover:border-violet-400 hover:bg-violet-50';
+                  if (selectedOption !== null) {
+                    if (isCorrectOption) style = 'bg-emerald-50 border-emerald-400 text-emerald-900';
+                    else if (selectedOption === optionIndex) style = 'bg-rose-50 border-rose-400 text-rose-900';
+                    else style = 'bg-slate-50 border-slate-200 text-slate-400';
+                  }
+                  return (
+                    <button
+                      key={optionIndex}
+                      type="button"
+                      disabled={selectedOption !== null}
+                      onClick={() => selectQuizOption(optionIndex)}
+                      className={`w-full text-left px-3.5 py-2.5 rounded-xl border text-xs font-semibold transition-all ${style} disabled:cursor-default`}
+                    >
+                      {String.fromCharCode(65 + optionIndex)}) {option}
+                    </button>
+                  );
+                })}
+              </div>
+              {selectedOption !== null && (
+                <div className={`p-3 rounded-xl text-xs leading-relaxed ${
+                  quizQuestions[quizIndex].correctOptionIndex === selectedOption
+                    ? 'bg-emerald-50 border border-emerald-200 text-emerald-900'
+                    : 'bg-rose-50 border border-rose-200 text-rose-900'
+                }`}>
+                  <strong>{quizQuestions[quizIndex].correctOptionIndex === selectedOption ? '✅ Doğru! +10 puan' : '❌ Yanlış'}</strong>
+                  <p className="mt-1">{quizQuestions[quizIndex].explanationTr}</p>
+                  <button
+                    type="button"
+                    onClick={nextQuizQuestion}
+                    className="mt-2 w-full py-2 rounded-xl bg-violet-600 hover:bg-violet-700 text-white text-xs font-black cursor-pointer"
+                  >
+                    {quizIndex >= quizQuestions.length - 1 ? 'Testi Bitir' : 'Sonraki Soru'}
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {!isQuizLoading && quizFinished && (
+            <div className="p-4 rounded-2xl bg-gradient-to-br from-violet-50 to-fuchsia-50 border border-violet-200 text-center space-y-2">
+              <div className="text-2xl">{quizScore === quizQuestions.length ? '🏆' : quizScore >= Math.ceil(quizQuestions.length / 2) ? '🎉' : '💪'}</div>
+              <div className="font-black text-violet-900 text-sm">Test Tamamlandı: {quizScore}/{quizQuestions.length} doğru</div>
+              <p className="text-xs text-slate-600 leading-relaxed">
+                {quizScore === quizQuestions.length
+                  ? 'Mükemmel! Bu konuda sağlamlaştın.'
+                  : quizScore >= Math.ceil(quizQuestions.length / 2)
+                    ? 'İyi gidiyorsun! Yanlış yaptığın soruların açıklamalarını mini derste tekrar oku.'
+                    : 'Zorlandığın alan net: yukarıdaki mini dersi tekrar oku, sonra testi yeniden dene.'}
+              </p>
+              <button
+                type="button"
+                onClick={() => { setQuizQuestions([]); setQuizFinished(false); setQuizStatus(null); }}
+                className="px-4 py-2 rounded-xl bg-violet-600 hover:bg-violet-700 text-white text-xs font-black cursor-pointer"
+              >
+                Yeni Test Oluştur
+              </button>
+            </div>
+          )}
+        </div>
+      </section>
+
       <section className="bg-white rounded-3xl border border-slate-200 p-5 shadow-sm space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <div className="flex items-center gap-2">
               <Brain className="w-5 h-5 text-violet-600" />
-              <h2 className="font-black text-slate-900">Gramer Pratiği</h2>
+              <h2 className="font-black text-slate-900">Cümle Kurma Alıştırmaları</h2>
             </div>
             <p className="text-xs text-slate-500 mt-1">
               İçerik kaynağı:{' '}

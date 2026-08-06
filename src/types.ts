@@ -14,6 +14,8 @@ export type MasteryState =
 
 export type ErrorSeverity = 'critical' | 'moderate' | 'minor' | 'style_only' | 'none';
 
+export type ErrorCategory = 'grammar' | 'vocabulary' | 'word_order' | 'style' | 'spelling';
+
 export type FSRSRating = 'again' | 'hard' | 'good' | 'easy';
 
 export type ConfidenceLevel = 'certain' | 'partially_certain' | 'uncertain' | 'random';
@@ -93,6 +95,7 @@ export interface FossilizedError {
   userAnswer: string;
   correctReference: string;
   errorDescription: string;
+  errorCategory?: ErrorCategory;
   confidence: ConfidenceLevel;
   date: string;
   resolved: boolean;
@@ -123,25 +126,4 @@ export interface ChatMessage {
   translationTr?: string;
   grammarCorrection?: string;
   timestamp: string;
-}
-
-export interface StorySentence {
-  targetText: string;
-  turkishText: string;
-  vocabulary: Array<{
-    term: string;
-    meaningTr: string;
-    isKey: boolean;
-  }>;
-}
-
-export interface AdaptiveStory {
-  id: string;
-  titleTarget: string;
-  titleTr: string;
-  language: TargetLanguage;
-  domain: Domain;
-  level: string; // e.g. "B1-B2 Clinical"
-  sentences: StorySentence[];
-  summaryTr: string;
 }

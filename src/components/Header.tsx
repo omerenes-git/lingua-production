@@ -60,7 +60,6 @@ export const Header: React.FC<HeaderProps> = ({
     { id: 'gramer_pratigi', label: 'Gramer Koçu' },
     { id: 'nasil_soylerim', label: 'Nasıl Söylerim?' },
     { id: 'sohbet', label: 'Sohbet' },
-    { id: 'hikayeler', label: 'Hikâyeler' },
     { id: 'ilerleme', label: 'İlerleme & Hatalarım' },
   ];
 
