@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { ErrorCategory, FossilizedError, LearningItem, TargetLanguage } from '../../types';
 import { callLinguaApi } from '../../lib/linguaApi';
+import { countUnresolvedErrorCategories } from '../../lib/errorCategory';
 import { VocabularyTooltip } from '../VocabularyTooltip';
 import {
   AlertTriangle,
@@ -361,15 +362,9 @@ export const GramerPratigiTab: React.FC<GramerPratigiTabProps> = ({
     return sameLevel.length ? sameLevel : drills;
   }, [drills, cefrLevel]);
 
-  // Hata profili: kayıtlı hataları kategorilere göre sayar (kişiselleştirmenin temeli)
-  const categoryCounts = useMemo(() => {
-    const counts: Record<string, number> = {};
-    for (const error of fossilizedErrors) {
-      const category = (error as unknown as { errorCategory?: string }).errorCategory;
-      if (category) counts[category] = (counts[category] || 0) + 1;
-    }
-    return counts;
-  }, [fossilizedErrors]);
+  // Hata profili: ÇÖZÜLMEMİŞ hataları kategorilere göre sayar (kişiselleştirmenin temeli).
+  // Çözüldü işaretlenen hatalar sayılmaz → başarı sonrası konu önceliği doğal olarak azalır.
+  const categoryCounts = useMemo(() => countUnresolvedErrorCategories(fossilizedErrors), [fossilizedErrors]);
 
   const topCategory = useMemo<ErrorCategory | null>(() => {
     let top: ErrorCategory | null = null;
@@ -385,11 +380,20 @@ export const GramerPratigiTab: React.FC<GramerPratigiTabProps> = ({
 
   const activeLessonCategory = selectedLessonCategory ?? topCategory ?? 'grammar';
 
+  // Mini derste gösterilecek, kullanıcının GERÇEK hatasından örnek (çözülmemiş).
+  const relatedError = useMemo(() => {
+    if (!activeLessonCategory) return null;
+    return (
+      fossilizedErrors.find(
+        (error) => !error.resolved && error.errorCategory === activeLessonCategory,
+      ) ?? null
+    );
+  }, [fossilizedErrors, activeLessonCategory]);
+
   const currentDrill = visibleDrills[Math.min(activeIndex, Math.max(0, visibleDrills.length - 1))];
-  const languageErrors = fossilizedErrors.filter((error) => {
-    const item = error as unknown as Record<string, unknown>;
-    return !item.language || item.language === currentLanguage;
-  });
+  // Dile ait hatalar; çözülmüş olanlar quiz/drill konusu olarak TEKRAR gönderilmez
+  const languageErrors = fossilizedErrors.filter((error) => !error.language || error.language === currentLanguage);
+  const unresolvedLanguageErrors = languageErrors.filter((error) => !error.resolved);
 
   const resetAttempt = () => {
     setUserAnswer('');
@@ -411,11 +415,8 @@ export const GramerPratigiTab: React.FC<GramerPratigiTabProps> = ({
     setEvaluation(null);
     setHint(null);
     try {
-      const errorTopics = languageErrors
-        .map((error) => {
-          const item = error as unknown as Record<string, unknown>;
-          return String(item.errorDescription || item.category || '').trim();
-        })
+      const errorTopics = unresolvedLanguageErrors
+        .map((error) => error.errorDescription?.trim() ?? '')
         .filter(Boolean);
 
       const payload = await callLinguaApi<GrammarDrillsResponse>('/api/generate-grammar-drills', {
@@ -530,9 +531,13 @@ export const GramerPratigiTab: React.FC<GramerPratigiTabProps> = ({
 
   const markRelatedErrorResolved = () => {
     if (!onMarkErrorResolved || !isSuccessfulVerdict(evaluation?.overallVerdict)) return;
-    const first = languageErrors[0] as unknown as Record<string, unknown> | undefined;
-    if (first?.id) {
-      onMarkErrorResolved(String(first.id));
+    // Aktif ders kategorisiyle eşleşen ÇÖZÜLMEMİŞ bir hatayı işaretle; yoksa herhangi çözülmemiş hata.
+    const target =
+      fossilizedErrors.find(
+        (error) => !error.resolved && error.errorCategory === activeLessonCategory,
+      ) ?? fossilizedErrors.find((error) => !error.resolved);
+    if (target) {
+      onMarkErrorResolved(target.id);
       setStatus('İlgili hata çözüldü olarak işaretlendi.');
     }
   };
@@ -572,12 +577,11 @@ export const GramerPratigiTab: React.FC<GramerPratigiTabProps> = ({
     setQuizScore(0);
     setQuizQuestions([]);
     try {
-      const errorTopics = languageErrors
+      const errorTopics = unresolvedLanguageErrors
         .slice(0, 8)
         .map((error) => {
-          const item = error as unknown as Record<string, unknown>;
-          const category = typeof item.errorCategory === 'string' ? item.errorCategory : '';
-          const description = String(item.errorDescription || '').trim();
+          const category = error.errorCategory ?? '';
+          const description = (error.errorDescription || '').trim();
           return category ? `[${category}] ${description}` : description;
         })
         .filter(Boolean);
@@ -687,6 +691,11 @@ export const GramerPratigiTab: React.FC<GramerPratigiTabProps> = ({
             )}
           </div>
           <p className="text-xs text-slate-700 font-medium leading-relaxed">{CATEGORY_LESSONS[activeLessonCategory].summary}</p>
+          {topCategory === activeLessonCategory && (
+            <div className="text-[10px] font-bold text-violet-700 bg-violet-100/80 border border-violet-200 rounded-lg px-2.5 py-1.5 inline-block">
+              🎯 Bu dersi görme nedenin: {CATEGORY_LESSONS[activeLessonCategory].label} en sık yaptığın hata kategorisi ({categoryCounts[activeLessonCategory]} çözülmemiş hata)
+            </div>
+          )}
           <ol className="space-y-1.5">
             {CATEGORY_LESSONS[activeLessonCategory].steps.map((step, index) => (
               <li key={index} className="text-xs text-slate-700 flex gap-2 leading-relaxed">
@@ -698,6 +707,20 @@ export const GramerPratigiTab: React.FC<GramerPratigiTabProps> = ({
           {LANGUAGE_GRAMMAR_NOTES[currentLanguage][activeLessonCategory] && (
             <div className="p-2.5 rounded-xl bg-white/70 border border-violet-200/60 text-[11px] text-violet-900 leading-relaxed">
               <strong>{currentLanguage.toUpperCase()} için:</strong> {LANGUAGE_GRAMMAR_NOTES[currentLanguage][activeLessonCategory]}
+            </div>
+          )}
+          {relatedError && (
+            <div className="p-3 rounded-xl bg-rose-50 border border-rose-200/80 space-y-1.5">
+              <div className="text-[10px] font-black text-rose-700 uppercase tracking-wider">📝 Senin hatandan örnek</div>
+              <div className="text-[11px] text-slate-700 leading-relaxed">
+                <strong>Senin cümlen:</strong> “{relatedError.userAnswer}”
+              </div>
+              <div className="text-[11px] text-emerald-800 leading-relaxed">
+                <strong>Doğrusu:</strong> “{relatedError.correctReference}”
+              </div>
+              {relatedError.errorDescription && (
+                <div className="text-[11px] text-slate-600 leading-relaxed">{relatedError.errorDescription}</div>
+              )}
             </div>
           )}
           <div className="p-2.5 rounded-xl bg-amber-50 border border-amber-200/70 text-[11px] text-amber-900 leading-relaxed">
@@ -995,7 +1018,7 @@ export const GramerPratigiTab: React.FC<GramerPratigiTabProps> = ({
                   <BookOpen className="w-4 h-4" />
                   Tekrar destesine ekle
                 </button>
-                {onMarkErrorResolved && languageErrors.length > 0 && (
+                {onMarkErrorResolved && unresolvedLanguageErrors.length > 0 && (
                   <button
                     type="button"
                     onClick={markRelatedErrorResolved}

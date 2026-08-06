@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { TargetLanguage, LearningItem, ProductionPrompt, ProductionAttempt, FossilizedError, AIEvaluationResult, ErrorCategory } from './types';
+import { TargetLanguage, LearningItem, ProductionPrompt, ProductionAttempt, FossilizedError } from './types';
+import { deriveErrorCategory } from './lib/errorCategory';
 import { INITIAL_PROMPTS, INITIAL_ITEMS } from './data/initialData';
 import { calculateNextMasteryState, scheduleReview } from './lib/engine';
 import { AI_SERVICE_UNAVAILABLE_MARKER } from './lib/aiService';
@@ -42,26 +43,6 @@ function readSessionSeen(): Record<TargetLanguage, string[]> {
 
 function readHistory(): Record<string, number> {
   try { return JSON.parse(localStorage.getItem('lingua_daily_history') || '{}'); } catch { return {}; }
-}
-
-// En sık tekrarlanan hata kategorisini AI değerlendirmesinden türetir.
-// Bu, Gramer Koçu bölümünün kişiselleştirilmesinin temelidir.
-function deriveErrorCategory(errors: AIEvaluationResult['errors']): ErrorCategory | undefined {
-  if (!errors || errors.length === 0) return undefined;
-  const counts = new Map<string, number>();
-  for (const error of errors) {
-    if (!error.category) continue;
-    counts.set(error.category, (counts.get(error.category) || 0) + 1);
-  }
-  let top: string | undefined;
-  let topCount = 0;
-  for (const [category, count] of counts) {
-    if (count > topCount) {
-      top = category;
-      topCount = count;
-    }
-  }
-  return top as ErrorCategory | undefined;
 }
 
 export function App() {

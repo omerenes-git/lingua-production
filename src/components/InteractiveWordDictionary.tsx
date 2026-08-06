@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { TargetLanguage, LearningItem } from '../types';
-import { Volume2, Plus, Check, BookOpen, X, Brain } from 'lucide-react';
+import { callLinguaApi } from '../lib/linguaApi';
+import { Volume2, Plus, Check, BookOpen, X, Brain, Loader2, AlertTriangle, RefreshCw } from 'lucide-react';
 import { ContextMnemonicModal } from './ContextMnemonicModal';
 
 interface WordLookupModalProps {
@@ -12,6 +13,21 @@ interface WordLookupModalProps {
   onAddLearningItem: (item: LearningItem) => void;
   isAlreadyAdded?: boolean;
 }
+
+interface LookupData {
+  meaningTarget: string;
+  translationTr: string;
+  grammaticalRole: string;
+  cefrLevel: string;
+  exampleSentence: string;
+  exampleTranslationTr: string;
+}
+
+const MEANING_LABELS: Record<TargetLanguage, { label: string; lang: string }> = {
+  en: { label: 'Meaning in English', lang: 'İngilizce' },
+  de: { label: 'Bedeutung auf Deutsch', lang: 'Almanca' },
+  sr: { label: 'Značenje na srpskom', lang: 'Sırpça' },
+};
 
 export const InteractiveWordDictionary: React.FC<WordLookupModalProps> = ({
   word,
@@ -25,6 +41,46 @@ export const InteractiveWordDictionary: React.FC<WordLookupModalProps> = ({
   const [added, setAdded] = useState(isAlreadyAdded);
   const [customMeaning, setCustomMeaning] = useState('');
   const [showMnemonicModal, setShowMnemonicModal] = useState(false);
+  const [lookupData, setLookupData] = useState<LookupData | null>(null);
+  const [lookupError, setLookupError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  const lookupWord = async (targetWord: string) => {
+    setLoading(true);
+    setLookupData(null);
+    setLookupError(null);
+    try {
+      const data = await callLinguaApi<Partial<LookupData>>('/api/lookup-word', {
+        word: targetWord,
+        contextSentence: contextSentence || targetWord,
+        language,
+      });
+      if (typeof data.meaningTarget !== 'string' || !data.meaningTarget.trim()) {
+        throw new Error('Sözlük servisi geçerli bir hedef dil karşılığı döndürmedi.');
+      }
+      setLookupData({
+        meaningTarget: data.meaningTarget.trim(),
+        translationTr: typeof data.translationTr === 'string' ? data.translationTr.trim() : '',
+        grammaticalRole: typeof data.grammaticalRole === 'string' ? data.grammaticalRole : '',
+        cefrLevel: typeof data.cefrLevel === 'string' ? data.cefrLevel : '',
+        exampleSentence: typeof data.exampleSentence === 'string' ? data.exampleSentence : '',
+        exampleTranslationTr: typeof data.exampleTranslationTr === 'string' ? data.exampleTranslationTr : '',
+      });
+    } catch (error) {
+      setLookupError(error instanceof Error && error.message ? error.message : 'Sözlük sorgusu tamamlanamadı.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Modal her açıldığında kelimeyi HEDEF DİLDE çözmek için sözlük servisini çağır.
+  useEffect(() => {
+    if (!isOpen || !word) return;
+    const targetWord = word.trim().replace(/[.,!?:;"'()]/g, '');
+    if (!targetWord || targetWord.length < 2) return;
+    void lookupWord(targetWord);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, word, language]);
 
   if (!isOpen || !word) return null;
 
@@ -49,7 +105,7 @@ export const InteractiveWordDictionary: React.FC<WordLookupModalProps> = ({
       id: `item_lingq_${Date.now()}`,
       language,
       domain: 'general',
-      turkishText: customMeaning.trim() || `Sözlük İfadesi (${cleanWord})`,
+      turkishText: customMeaning.trim() || lookupData?.translationTr?.trim() || `Sözlük İfadesi (${cleanWord})`,
       targetText: cleanWord,
       keyTermOrPattern: cleanWord,
       masteryState: 'noticed',
@@ -86,6 +142,47 @@ export const InteractiveWordDictionary: React.FC<WordLookupModalProps> = ({
             </div>
           </div>
 
+          {/* Hedef dilde anlam (AI sözlük) */}
+          {loading ? (
+            <div className="flex items-center justify-center space-x-2 py-3 text-xs text-sky-700 bg-sky-50/60 border border-sky-200 rounded-xl">
+              <Loader2 className="w-4 h-4 animate-spin" />
+              <span>{MEANING_LABELS[language].lang} karşılık aranıyor...</span>
+            </div>
+          ) : lookupError ? (
+            <div className="space-y-2">
+              <div className="flex items-start gap-2 p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900">
+                <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                <span>{lookupError}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => void lookupWord(cleanWord)}
+                className="w-full py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl flex items-center justify-center gap-1.5"
+              >
+                <RefreshCw className="w-3.5 h-3.5" /> Tekrar Dene
+              </button>
+            </div>
+          ) : lookupData ? (
+            <div className="bg-sky-50/70 border border-sky-200 rounded-xl p-3 space-y-2">
+              <div className="text-[10px] font-black text-sky-700 uppercase tracking-wider">
+                {MEANING_LABELS[language].label}
+              </div>
+              <div className="text-sm font-bold text-slate-900 leading-relaxed">{lookupData.meaningTarget}</div>
+              {lookupData.translationTr && (
+                <div className="text-[11px] text-slate-500">
+                  <span className="text-slate-400">Türkçe karşılık:</span> <span className="text-slate-700 font-semibold">{lookupData.translationTr}</span>
+                </div>
+              )}
+              {lookupData.grammaticalRole && <div className="text-[10px] text-slate-400 italic">{lookupData.grammaticalRole}</div>}
+              {lookupData.exampleSentence && (
+                <div className="text-[11px] text-slate-600 bg-white/70 rounded-lg p-2 border border-sky-100 italic">
+                  “{lookupData.exampleSentence}”
+                  {lookupData.exampleTranslationTr && <span className="block not-italic text-[10px] text-slate-400 mt-0.5">({lookupData.exampleTranslationTr})</span>}
+                </div>
+              )}
+            </div>
+          ) : null}
+
           {/* Action buttons */}
           <div className="grid grid-cols-2 gap-2">
             <button
@@ -115,13 +212,13 @@ export const InteractiveWordDictionary: React.FC<WordLookupModalProps> = ({
           {/* Custom Meaning or quick translation input */}
           <div className="space-y-1.5">
             <label className="text-xs font-bold text-slate-700">
-              Türkçe Anlamı / Kendi Notun:
+              Kendi Notun (isteğe bağlı):
             </label>
             <input
               type="text"
               value={customMeaning}
               onChange={(e) => setCustomMeaning(e.target.value)}
-              placeholder="Örn: artmak, yükselmek, omurga..."
+              placeholder="Bu kelimeyle ilgili kendi notunu ekle..."
               className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-medium focus:ring-2 focus:ring-sky-500 focus:bg-white"
             />
           </div>
