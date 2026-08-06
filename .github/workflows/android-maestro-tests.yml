@@ -1,17 +1,11 @@
 name: Android Maestro E2E Tests
 
 # Gerçek kullanıcı benzeri Android testleri: GitHub Actions emülatöründe Maestro.
-# (VPS'te KVM yok, bu yüzden emülatör CI'da çalışır.)
+# (VPS'te KVM yok; hosted Linux/macOS runner'larda emülatör boot EDEMİYOR — 2026-08-06
+# 4 deneme. Bu yüzden yalnızca workflow_dispatch ile çalışır; PR'da zorunlu check DEĞİLDİR.
+# Fiziksel cihaz veya KVM'li self-hosted runner olunca PR tetiklemesi geri eklenebilir.)
 on:
   workflow_dispatch:
-  pull_request:
-    branches: [main]
-    paths:
-      - 'src/**'
-      - '.maestro/**'
-      - '.github/workflows/android-maestro-tests.yml'
-      - 'package.json'
-      - 'package-lock.json'
 
 permissions:
   contents: read
