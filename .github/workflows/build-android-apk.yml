@@ -72,14 +72,109 @@ jobs:
           npx cap add android
           npx cap sync android
 
-      - name: Build debug APK
+      # Kalıcı imza: apk-latest artık DEBUG değil, her build'de aynı kalan
+      # ANDROID_KEYSTORE_* secret'ı ile İMZALI release APK üretir. Böylece
+      # kullanıcı sonraki sürümleri veri kaybetmeden üzerine kurabilir.
+      - name: Restore persistent signing keystore
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          ANDROID_KEYSTORE_PATH: ${{ github.workspace }}/android/app/lingua-release.jks
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$ANDROID_KEYSTORE_BASE64" || { echo 'ANDROID_KEYSTORE_BASE64 secret is missing'; exit 1; }
+          test -n "$ANDROID_KEYSTORE_PASSWORD" || { echo 'ANDROID_KEYSTORE_PASSWORD secret is missing'; exit 1; }
+          test -n "$ANDROID_KEY_ALIAS" || { echo 'ANDROID_KEY_ALIAS secret is missing'; exit 1; }
+          test -n "$ANDROID_KEY_PASSWORD" || { echo 'ANDROID_KEY_PASSWORD secret is missing'; exit 1; }
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$ANDROID_KEYSTORE_PATH"
+          chmod 600 "$ANDROID_KEYSTORE_PATH"
+          keytool -list \
+            -keystore "$ANDROID_KEYSTORE_PATH" \
+            -storepass "$ANDROID_KEYSTORE_PASSWORD" \
+            -alias "$ANDROID_KEY_ALIAS" >/dev/null
+
+      - name: Configure Android package, version and release signing
+        env:
+          ANDROID_KEYSTORE_PATH: ${{ github.workspace }}/android/app/lingua-release.jks
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          VERSION_CODE: ${{ github.run_number }}
+          VERSION_NAME: 1.0.${{ github.run_number }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os
+          import re
+          from pathlib import Path
+
+          manifest = Path('android/app/src/main/AndroidManifest.xml')
+          manifest_text = manifest.read_text(encoding='utf-8')
+          permission = '<uses-permission android:name="android.permission.RECORD_AUDIO" />'
+          if permission not in manifest_text:
+              manifest_text = manifest_text.replace('<application', permission + '\n    <application', 1)
+              manifest.write_text(manifest_text, encoding='utf-8')
+
+          gradle = Path('android/app/build.gradle')
+          text = gradle.read_text(encoding='utf-8')
+
+          text, version_code_count = re.subn(
+              r'(?m)^\s*versionCode\s+\d+\s*$',
+              f'        versionCode {int(os.environ["VERSION_CODE"])}',
+              text,
+              count=1,
+          )
+          text, version_name_count = re.subn(
+              r'(?m)^\s*versionName\s+["\'][^"\']+["\']\s*$',
+              f'        versionName "{os.environ["VERSION_NAME"]}"',
+              text,
+              count=1,
+          )
+          if version_code_count != 1 or version_name_count != 1:
+              raise SystemExit('Could not update Android versionCode/versionName')
+
+          signing_block = '''    signingConfigs {
+              release {
+                  storeFile file(System.getenv("ANDROID_KEYSTORE_PATH"))
+                  storePassword System.getenv("ANDROID_KEYSTORE_PASSWORD")
+                  keyAlias System.getenv("ANDROID_KEY_ALIAS")
+                  keyPassword System.getenv("ANDROID_KEY_PASSWORD")
+              }
+          }
+
+          '''
+          if 'storeFile file(System.getenv("ANDROID_KEYSTORE_PATH"))' not in text:
+              marker = '    buildTypes {'
+              if marker not in text:
+                  raise SystemExit('Could not locate Android buildTypes block')
+              text = text.replace(marker, signing_block + marker, 1)
+
+          if 'signingConfig signingConfigs.release' not in text:
+              text, count = re.subn(
+                  r'(buildTypes\s*\{\s*release\s*\{)',
+                  r'\1\n            signingConfig signingConfigs.release',
+                  text,
+                  count=1,
+                  flags=re.DOTALL,
+              )
+              if count != 1:
+                  raise SystemExit('Could not configure release signing')
+
+          gradle.write_text(text, encoding='utf-8')
+          PY
+
+      - name: Build signed release APK
         run: |
           chmod +x android/gradlew
           cd android
-          ./gradlew assembleDebug --no-daemon
+          ./gradlew assembleRelease --no-daemon
 
       - name: Prepare APK
-        run: cp android/app/build/outputs/apk/debug/app-debug.apk Lingua-Enes-latest.apk
+        run: cp android/app/build/outputs/apk/release/app-release.apk Lingua-Enes-latest.apk
 
       - name: Upload workflow artifact
         uses: actions/upload-artifact@v4
@@ -97,7 +192,7 @@ jobs:
           gh release create apk-latest Lingua-Enes-latest.apk \
             --repo "$GITHUB_REPOSITORY" \
             --title "Lingua Android APK - Latest" \
-            --notes "Üret modunda AI ile sınırsız cümle üretimi, A1-C2 otomatik seviye ve senkronizasyon güncellemelerini içeren en güncel Android APK."
+            --notes "Kalıcı anahtarla imzalanmış güncellenebilir APK (artık debug değil). Bu sürümden itibaren sonraki güncellemeler veri kaybetmeden üzerine kurulabilir. NOT: Telefonda ESKİ debug kurulumu varsa bu sürüm bir kez kaldırılıp kurulmalıdır."
 
       - name: Report successful APK build
         if: success()
