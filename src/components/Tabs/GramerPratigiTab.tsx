@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { ErrorCategory, FossilizedError, LearningItem, TargetLanguage } from '../../types';
 import { callLinguaApi } from '../../lib/linguaApi';
 import { countUnresolvedErrorCategories } from '../../lib/errorCategory';
+import { CefrLevel, DEFAULT_CEFR_LEVEL, estimateCefrLevel } from '../../lib/proficiency';
 import { VocabularyTooltip } from '../VocabularyTooltip';
 import {
   AlertTriangle,
@@ -54,6 +55,7 @@ interface EvaluationResult {
 interface GramerPratigiTabProps {
   currentLanguage: TargetLanguage;
   fossilizedErrors: FossilizedError[];
+  learningItems: LearningItem[];
   onAddLearningItem: (item: LearningItem) => void;
   onMarkErrorResolved?: (errorId: string) => void;
 }
@@ -62,6 +64,21 @@ type ContentSource = 'curated' | 'ai';
 
 const CURATED_DRILLS: Record<TargetLanguage, GrammarDrill[]> = {
   en: [
+    {
+      id: 'curated-en-a1-intro',
+      grammarTopic: 'Simple present — be',
+      cefrLevel: 'A1',
+      turkishSentence: 'Ben bir fizyoterapistim ve İstanbul\'da yaşıyorum.',
+      targetReference: 'I am a physiotherapist and I live in Istanbul.',
+      targetVariants: ['I\'m a physiotherapist and I live in Istanbul.'],
+      grammarPattern: 'I am + noun / I live in + city',
+      fossilizedErrorFocus: 'Am/is/are kullanımı ve geniş zaman.',
+      hintLadder: {
+        patternHint: 'I am + meslek; I live in + şehir.',
+        keyWordsGiven: 'I am / physiotherapist / live in / Istanbul',
+        fullAnswer: 'I am a physiotherapist and I live in Istanbul.',
+      },
+    },
     {
       id: 'curated-en-a2-request',
       grammarTopic: 'Polite requests',
@@ -92,6 +109,51 @@ const CURATED_DRILLS: Record<TargetLanguage, GrammarDrill[]> = {
         fullAnswer: 'If the pain increases during exercise, stop the movement.',
       },
     },
+    {
+      id: 'curated-en-b2-modals',
+      grammarTopic: 'Modals of obligation',
+      cefrLevel: 'B2',
+      turkishSentence: 'Rehabilitasyon sürecinde hastalar düzenli egzersiz yapmalıdır.',
+      targetReference: 'Patients must do regular exercises during the rehabilitation process.',
+      targetVariants: ['During rehabilitation, patients are required to exercise regularly.'],
+      grammarPattern: 'must / have to + verb',
+      fossilizedErrorFocus: 'must / have to / should arasındaki zorunluluk farkı.',
+      hintLadder: {
+        patternHint: 'must + fiil; zorunluluk derecesine göre must/have to/should.',
+        keyWordsGiven: 'patients / must / regular exercises / rehabilitation',
+        fullAnswer: 'Patients must do regular exercises during the rehabilitation process.',
+      },
+    },
+    {
+      id: 'curated-en-c1-conditionals',
+      grammarTopic: 'Third conditional',
+      cefrLevel: 'C1',
+      turkishSentence: 'Daha erken teşhis koymuş olsaydık tedavi daha başarılı olurdu.',
+      targetReference: 'If we had diagnosed it earlier, the treatment would have been more successful.',
+      targetVariants: ['Had we diagnosed it earlier, the treatment would have been more successful.'],
+      grammarPattern: 'If + past perfect, would have + past participle',
+      fossilizedErrorFocus: '3. tip şart cümlesi ve gerçekleşmemiş geçmiş varsayımı.',
+      hintLadder: {
+        patternHint: 'If + had + V3, would have + V3.',
+        keyWordsGiven: 'had diagnosed / earlier / treatment / would have been',
+        fullAnswer: 'If we had diagnosed it earlier, the treatment would have been more successful.',
+      },
+    },
+    {
+      id: 'curated-en-c2-inversion',
+      grammarTopic: 'Inversion for emphasis',
+      cefrLevel: 'C2',
+      turkishSentence: 'Hiçbir durumda hasta verileri üçüncü kişilerle paylaşılmamalıdır.',
+      targetReference: 'Under no circumstances should patient data be shared with third parties.',
+      targetVariants: ['Patient data should never be shared with third parties under any circumstances.'],
+      grammarPattern: 'Under no circumstances + auxiliary + subject + verb',
+      fossilizedErrorFocus: 'Olumsuz anlamlı ifadelerle devrik cümle (inversion).',
+      hintLadder: {
+        patternHint: 'Under no circumstances + should + özne + fiil.',
+        keyWordsGiven: 'under no circumstances / should / patient data / shared',
+        fullAnswer: 'Under no circumstances should patient data be shared with third parties.',
+      },
+    },
   ],
   de: [
     {
@@ -110,6 +172,21 @@ const CURATED_DRILLS: Record<TargetLanguage, GrammarDrill[]> = {
       },
     },
     {
+      id: 'curated-de-a2-perfekt',
+      grammarTopic: 'Perfekt zamanı',
+      cefrLevel: 'A2',
+      turkishSentence: 'Dün hastanede çok çalıştım.',
+      targetReference: 'Gestern habe ich im Krankenhaus viel gearbeitet.',
+      targetVariants: ['Ich habe gestern viel im Krankenhaus gearbeitet.'],
+      grammarPattern: 'haben + Partizip II (sonda)',
+      fossilizedErrorFocus: 'Perfekt kurulumu ve Partizip II\'nin cümle sonunda olması.',
+      hintLadder: {
+        patternHint: 'habe + özne + ... + Partizip II.',
+        keyWordsGiven: 'gestern / habe / im Krankenhaus / gearbeitet',
+        fullAnswer: 'Gestern habe ich im Krankenhaus viel gearbeitet.',
+      },
+    },
+    {
       id: 'curated-de-b1-wenn',
       grammarTopic: 'Wenn yan cümlesi',
       cefrLevel: 'B1',
@@ -122,6 +199,51 @@ const CURATED_DRILLS: Record<TargetLanguage, GrammarDrill[]> = {
         patternHint: 'Wenn cümlesinde çekimli fiil sona gelir.',
         keyWordsGiven: 'wenn / Zeit haben / anrufen',
         fullAnswer: 'Wenn ich Zeit habe, rufe ich dich an.',
+      },
+    },
+    {
+      id: 'curated-de-b2-konjunktiv',
+      grammarTopic: 'Konjunktiv II (nezaket/koşul)',
+      cefrLevel: 'B2',
+      turkishSentence: 'Senin yerinde olsam bu tedaviyi denemezdim.',
+      targetReference: 'An deiner Stelle würde ich diese Behandlung nicht ausprobieren.',
+      targetVariants: ['Ich würde diese Behandlung an deiner Stelle nicht ausprobieren.'],
+      grammarPattern: 'würde + Infinitiv (sonda)',
+      fossilizedErrorFocus: 'würde + Infinitiv yapısı ve cümle sonu fiil.',
+      hintLadder: {
+        patternHint: 'An deiner Stelle + würde + özne + ... + Infinitiv.',
+        keyWordsGiven: 'an deiner Stelle / würde / diese Behandlung / nicht ausprobieren',
+        fullAnswer: 'An deiner Stelle würde ich diese Behandlung nicht ausprobieren.',
+      },
+    },
+    {
+      id: 'curated-de-c1-passiv',
+      grammarTopic: 'Passiv (edilgen çatı)',
+      cefrLevel: 'C1',
+      turkishSentence: 'Bu klinikte her gün onlarca hasta tedavi ediliyor.',
+      targetReference: 'In dieser Klinik werden täglich Dutzende Patienten behandelt.',
+      targetVariants: ['Täglich werden in dieser Klinik Dutzende Patienten behandelt.'],
+      grammarPattern: 'werden + Partizip II',
+      fossilizedErrorFocus: 'werden + Partizip II ile edilgen çatı kurulumu.',
+      hintLadder: {
+        patternHint: 'werden + özne + ... + Partizip II.',
+        keyWordsGiven: 'in dieser Klinik / werden / täglich / Patienten / behandelt',
+        fullAnswer: 'In dieser Klinik werden täglich Dutzende Patienten behandelt.',
+      },
+    },
+    {
+      id: 'curated-de-c2-nominalisierung',
+      grammarTopic: 'Nominalisierung (isimleştirme)',
+      cefrLevel: 'C2',
+      turkishSentence: 'Düzenli eğitim sayesinde hastanın durumu gözle görülür şekilde iyileşti.',
+      targetReference: 'Durch die regelmäßige Schulung besserte sich der Zustand des Patienten sichtbar.',
+      targetVariants: ['Der Zustand des Patienten besserte sich durch die regelmäßige Schulung sichtbar.'],
+      grammarPattern: 'durch + Nominalisierung + reflexiv',
+      fossilizedErrorFocus: 'Fiil yerine isimleştirme kullanımı (durch die Schulung).',
+      hintLadder: {
+        patternHint: 'durch + die + sıfat + isim; fiil çekimi özneye göre.',
+        keyWordsGiven: 'durch die regelmäßige Schulung / besserte sich / sichtbar',
+        fullAnswer: 'Durch die regelmäßige Schulung besserte sich der Zustand des Patienten sichtbar.',
       },
     },
   ],
@@ -154,6 +276,66 @@ const CURATED_DRILLS: Record<TargetLanguage, GrammarDrill[]> = {
         patternHint: 'sastaćemo se + zaman ifadesi',
         keyWordsGiven: 'sastaćemo se / sutra / u tri sata',
         fullAnswer: 'Sastaćemo se sutra u tri sata.',
+      },
+    },
+    {
+      id: 'curated-sr-b1-perfekat',
+      grammarTopic: 'Perfekat (geçmiş zaman)',
+      cefrLevel: 'B1',
+      turkishSentence: 'Dün bütün gün yağmur yağdı.',
+      targetReference: 'Juče je ceo dan padala kiša.',
+      targetVariants: ['Ceo dan juče je padala kiša.'],
+      grammarPattern: 'jesam (je) + radni glagolski pridev',
+      fossilizedErrorFocus: 'Perfekat kurulumu ve je yardımcı fiili.',
+      hintLadder: {
+        patternHint: 'juče + je + ... + padala kiša.',
+        keyWordsGiven: 'juče / je / ceo dan / padala kiša',
+        fullAnswer: 'Juče je ceo dan padala kiša.',
+      },
+    },
+    {
+      id: 'curated-sr-b2-kondicional',
+      grammarTopic: 'Kondicional (şart kipi)',
+      cefrLevel: 'B2',
+      turkishSentence: 'Senin yerinde olsam bu kadar geç kalmazdım.',
+      targetReference: 'Da sam na tvom mestu, ne bih toliko kasnio.',
+      targetVariants: ['Ne bih toliko kasnio da sam na tvom mestu.'],
+      grammarPattern: 'da + perfekat + bih + ...',
+      fossilizedErrorFocus: 'Kondicional kurulumu ve bih kullanımı.',
+      hintLadder: {
+        patternHint: 'da sam na tvom mestu + bih + fiil.',
+        keyWordsGiven: 'da sam / na tvom mestu / ne bih / kasnio',
+        fullAnswer: 'Da sam na tvom mestu, ne bih toliko kasnio.',
+      },
+    },
+    {
+      id: 'curated-sr-c1-pasiv',
+      grammarTopic: 'Pasiv (edilgen çatı)',
+      cefrLevel: 'C1',
+      turkishSentence: 'Bu klinikte her gün onlarca hasta tedavi ediliyor.',
+      targetReference: 'U ovoj klinici se svakodnevno leči na desetine pacijenata.',
+      targetVariants: ['Svakodnevno se u ovoj klinici leči na desetine pacijenata.'],
+      grammarPattern: 'se + povratni pasiv',
+      fossilizedErrorFocus: 'se ile edilgen yapı ve kelime sırası.',
+      hintLadder: {
+        patternHint: 'U ovoj klinici + se + svakodnevno + leči...',
+        keyWordsGiven: 'u ovoj klinici / se / svakodnevno / leči',
+        fullAnswer: 'U ovoj klinici se svakodnevno leči na desetine pacijenata.',
+      },
+    },
+    {
+      id: 'curated-sr-c2-enklitike',
+      grammarTopic: 'Enklitike sıralaması',
+      cefrLevel: 'C2',
+      turkishSentence: 'Onlar sana bunu dün söylemişlerdi.',
+      targetReference: 'Oni su ti to juče rekli.',
+      targetVariants: ['Rekli su ti to juče.'],
+      grammarPattern: 'özne + enklitikler (su, ti, to) + fiil',
+      fossilizedErrorFocus: 'Enklitiklerin doğru sıralaması (su → ti → to).',
+      hintLadder: {
+        patternHint: 'Oni + su + ti + to + juče + rekli.',
+        keyWordsGiven: 'oni / su / ti / to / juče / rekli',
+        fullAnswer: 'Oni su ti to juče rekli.',
       },
     },
   ],
@@ -315,10 +497,16 @@ const isSuccessfulVerdict = (verdict: GrammarVerdict | undefined) =>
 export const GramerPratigiTab: React.FC<GramerPratigiTabProps> = ({
   currentLanguage,
   fossilizedErrors,
+  learningItems,
   onAddLearningItem,
   onMarkErrorResolved,
 }) => {
-  const [cefrLevel, setCefrLevel] = useState('A2');
+  // Kişiselleştirme: kullanıcının bu dildeki tahmini CEFR seviyesi (pratik
+  // kanıtı varsa) default seçilir; kanıt yoksa güvenli başlangıç A1.
+  const [cefrLevel, setCefrLevel] = useState<CefrLevel>(() => {
+    const estimate = estimateCefrLevel(learningItems, currentLanguage);
+    return estimate.level ?? DEFAULT_CEFR_LEVEL;
+  });
   const [drills, setDrills] = useState<GrammarDrill[]>(CURATED_DRILLS[currentLanguage]);
   const [source, setSource] = useState<ContentSource>('curated');
   const [activeIndex, setActiveIndex] = useState(0);
@@ -355,11 +543,16 @@ export const GramerPratigiTab: React.FC<GramerPratigiTabProps> = ({
     setEvaluation(null);
     setHint(null);
     setStatus(null);
-  }, [currentLanguage]);
+    // Dil değişince o dildeki tahmini seviyeye geç (kişiselleştirme).
+    const estimate = estimateCefrLevel(learningItems, currentLanguage);
+    setCefrLevel(estimate.level ?? DEFAULT_CEFR_LEVEL);
+  }, [currentLanguage, learningItems]);
 
   const visibleDrills = useMemo(() => {
-    const sameLevel = drills.filter((drill) => drill.cefrLevel === cefrLevel);
-    return sameLevel.length ? sameLevel : drills;
+    // Seviye seçimi gerçekten filtrelemeli: eşleşen yoksa başka seviyenin
+    // içeriğini gösterme (kullanıcıyı yanıltma). AI üretimi veya seviye
+    // değiştirme çözüm olarak sunulur.
+    return drills.filter((drill) => drill.cefrLevel === cefrLevel);
   }, [drills, cefrLevel]);
 
   // Hata profili: ÇÖZÜLMEMİŞ hataları kategorilere göre sayar (kişiselleştirmenin temeli).
@@ -623,7 +816,17 @@ export const GramerPratigiTab: React.FC<GramerPratigiTabProps> = ({
   };
 
   if (!currentDrill) {
-    return <div className="p-6 text-sm text-slate-600">Bu dil için gramer alıştırması bulunamadı.</div>;
+    return (
+      <div className="max-w-5xl mx-auto space-y-5">
+        <div className="p-6 bg-white rounded-3xl border border-slate-200 text-sm text-slate-600 leading-relaxed space-y-2">
+          <div className="font-black text-slate-900">Bu seviyede ({cefrLevel}) hazır alıştırma bulunamadı.</div>
+          <p>
+            Farklı bir seviye seçebilir ya da <strong>AI ile yeni alıştırma üret</strong> butonuyla bu
+            seviyeye özel alıştırma oluşturabilirsin. AI, diline ve hatalarına göre kişiselleştirilmiş içerik üretir.
+          </p>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -848,7 +1051,7 @@ export const GramerPratigiTab: React.FC<GramerPratigiTabProps> = ({
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
-            {['A1', 'A2', 'B1', 'B2'].map((level) => (
+            {(['A1', 'A2', 'B1', 'B2', 'C1', 'C2'] as CefrLevel[]).map((level) => (
               <button
                 key={level}
                 type="button"
