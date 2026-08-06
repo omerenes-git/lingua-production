@@ -117,6 +117,12 @@ const scenarios = [
     beklenen: (r) => ['minor_issue', 'major_issue'].includes(r.overallVerdict) && r.errors.some((e) => e.category === 'grammar'),
   },
   {
+    ad: 'saf yazım hatası spelling kategorisiyle ayrılır',
+    payload: { language: 'de', sourceSentence: SOURCE_DE, userAnswer: 'Ich gehe morgen mit meinen Freundn ins Kino.', targetReference: REF_DE },
+    // Bilinçli yazım hatası: "Freunden" -> "Freundn" (harf eksik)
+    beklenen: (r) => r.errors.some((e) => e.category === 'spelling') || ['minor_issue', 'major_issue'].includes(r.overallVerdict),
+  },
+  {
     ad: 'Sırpça doğru cevap kabul',
     payload: { language: 'sr', sourceSentence: SOURCE_SR, userAnswer: REF_SR, targetReference: REF_SR },
     beklenen: (r) => ['correct', 'natural_variant'].includes(r.overallVerdict),

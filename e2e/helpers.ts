@@ -35,10 +35,9 @@ export async function login(page: Page, user: TestUser) {
   await expect(page.getByText(TABS.bugun).first()).toBeVisible({ timeout: 25_000 });
 }
 
-/** Tab'a geç. */
+/** Tab'a geç. (aria-current uygulamada kullanılmıyor; gezinme içerik varlığıyla doğrulanır.) */
 export async function goTab(page: Page, tabKey: keyof typeof TABS) {
   await page.getByRole('button', { name: TABS[tabKey] }).first().click();
-  await expect(page.getByRole('button', { name: TABS[tabKey] }).first()).toHaveAttribute('aria-current', 'page', { timeout: 10_000 }).catch(() => {});
 }
 
 /** localStorage temizle + sayfayı yenile (izole test durumu). Sayfa önce yüklenmeli. */

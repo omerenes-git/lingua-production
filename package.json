@@ -10,7 +10,9 @@
     "start": "node dist/server.mjs",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:e2e": "playwright test",
+    "test:ai": "node scripts/ai-evaluate-regression.mjs"
   },
   "dependencies": {
     "clsx": "^2.1.1",

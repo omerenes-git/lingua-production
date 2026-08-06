@@ -253,7 +253,8 @@ Deno.serve(async (request: Request) => {
   if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS_HEADERS });
   if (request.method !== 'POST') return jsonResponse({ error: 'Yalnızca POST desteklenir.' }, 405);
   const jwt = decodeJwtPayload(request.headers.get('Authorization'));
-  if (!isAllowedUser(jwt.sub as string)) return jsonResponse({ error: 'Bu hesap web uygulaması için yetkili değil.' }, 403);
+  const jwtSub = typeof jwt.sub === 'string' ? jwt.sub : '';
+  if (!isAllowedUser(jwtSub)) return jsonResponse({ error: 'Bu hesap web uygulaması için yetkili değil.' }, 403);
   try {
     const rawBody = await request.text();
     if (rawBody.length > MAX_BODY_CHARS) return jsonResponse({ error: 'İstek çok büyük.' }, 413);
