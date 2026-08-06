@@ -96,7 +96,14 @@ function readOpenAiText(record: JsonRecord): string {
 async function generateJson(prompt: string): Promise<unknown> {
   const provider = readProvider();
   const model = readRequiredEnv('AI_TEXT_MODEL');
-  if (provider === 'gemini') {
+  // Ucuz modeller (gemini-flash-lite vb.) uzun JSON şemalarında ara sıra
+  // bozuk/kesik JSON üretebiliyor. Kullanıcıya 500 döndürmek yerine birkaç
+  // kez yeniden dene (maliyet düşük kalır, hata görünmez).
+  const MAX_ATTEMPTS = 4;
+  let lastError: Error = new Error('Bilinmeyen AI hatası');
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    try {
+      if (provider === 'gemini') {
     const apiKey = readRequiredEnv('GEMINI_API_KEY');
     const baseUrl = (Deno.env.get('AI_GEMINI_BASE_URL') ?? 'https://generativelanguage.googleapis.com').replace(/\/+$/, '');
     const response = await fetch(`${baseUrl}/v1beta/interactions`, {
@@ -114,6 +121,15 @@ async function generateJson(prompt: string): Promise<unknown> {
   });
   if (!response.ok) throw new Error(`OpenAI ${response.status}: ${(await response.text()).slice(0, 300)}`);
   return extractJson(readOpenAiText(asRecord(await response.json())));
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(String(error));
+      if (attempt < MAX_ATTEMPTS) {
+        console.error(JSON.stringify({ function: 'lingua-web-api', retryAttempt: attempt, error: lastError.message }));
+        await new Promise((resolve) => setTimeout(resolve, 800 * attempt));
+      }
+    }
+  }
+  throw lastError;
 }
 
 function promptFor(action: string, payload: JsonRecord): string {
