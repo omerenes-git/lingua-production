@@ -22,8 +22,10 @@ concurrency:
 
 jobs:
   maestro-android:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 50
+    # macOS runner: Apple Hypervisor ile donanım hızlandırması (Linux hosted runner'larda
+    # KVM yok — üç denemede emülatör boot edemedi). Action SDK'yı kendisi kurar.
+    runs-on: macos-14
+    timeout-minutes: 60
 
     steps:
       - name: Checkout
@@ -86,9 +88,8 @@ jobs:
           profile: pixel_5
           disable-animations: true
           force-avd-creation: true
-          disable-linux-hw-accel: false
           emulator-boot-timeout: 900
-          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -accel auto
+          emulator-options: -no-window -no-snapshot -noaudio -no-boot-anim
           script: |
             adb start-server || true
             adb wait-for-device
