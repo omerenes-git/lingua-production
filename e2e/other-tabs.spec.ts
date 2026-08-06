@@ -35,6 +35,24 @@ test.describe('Gramer Koçu', () => {
     await expect(page.getByText(/Henüz kayıtlı hatan yok|Üret bölümünde pratik yaptıkça/i).first()).toBeVisible();
   });
 
+  test('Testi Başlat butonu hata kaydı olmasa da AKTİF ve quiz üretebilir (regresyon)', async ({ page }) => {
+    // Önce oturumu kapat (beforeEach DE ile giriş yaptı), sonra yeni kullanıcı (hata profili boş) ile giriş yap
+    await page.getByRole('button', { name: /Oturumu kapat/i }).click();
+    await expect(page.getByRole('heading', { name: /Güvenli giriş/i }).first()).toBeVisible({ timeout: 20_000 });
+    await login(page, getTestUser('new'));
+    await goTab(page, 'gramer');
+    // Buton aktif olmalı (disabled DEĞİL) — önceki davranış disabled idi
+    const quizBtn = page.getByRole('button', { name: /Testi Başlat/i });
+    await expect(quizBtn).toBeVisible();
+    await expect(quizBtn).not.toBeDisabled();
+    // Bilgilendirme metni görünür
+    await expect(page.getByText(/test yine de üretilir/i).first()).toBeVisible();
+    // Bas → quiz üretilir (genel seviye testi)
+    await quizBtn.click();
+    await expect(page.getByText(/Soru 1\//).first()).toBeVisible({ timeout: 90_000 });
+    await expect(page.getByText(/Doğru: 0/).first()).toBeVisible({ timeout: 10_000 });
+  });
+
   test('AI ile yeni alıştırma üretimi çalışır (gerçek AI çağrısı)', async ({ page }) => {
     // B1 seviyesini seç
     await page.getByRole('button', { name: 'B1' }).click();
