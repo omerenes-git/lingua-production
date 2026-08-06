@@ -153,6 +153,14 @@ export const SupabaseAuthGate: React.FC<SupabaseAuthGateProps> = ({ children }) 
 
   const handleSignOut = async () => {
     await signOut();
+    // Aynı cihazda başka bir hesapla giriş yapılırsa önceki kullanıcının yerel
+    // öğrenme verileri görünmesin (veri sızıntısı/gizlilik). Supabase sync,
+    // yeniden girişte kullanıcının kendi verisini buluttan geri getirir.
+    try {
+      ['lingua_prompts', 'lingua_items', 'lingua_fossilized', 'lingua_daily_history', 'lingua_session_seen', 'lingua_supabase_session_v1'].forEach((key) => localStorage.removeItem(key));
+    } catch {
+      // localStorage kullanılamıyorsa sessizce geç
+    }
     setSession(null);
     setIsRecoveryMode(false);
     setPassword('');
