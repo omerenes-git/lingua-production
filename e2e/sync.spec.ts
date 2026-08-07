@@ -41,7 +41,8 @@ test.describe('Otomatik kayıt ve veri kalıcılığı', () => {
 test.describe('Bulut senkronizasyon', () => {
   test('Bulut Senkronize butonu modal açar', async ({ page }) => {
     await loginDE(page);
-    await page.getByRole('button', { name: /Bulut Senkronize/i }).click();
+    // Desktop "Bulut Senkronize", mobil "Bulut Senkronizasyon Durumu (...)" — ikisini de yakala
+    await page.getByRole('button', { name: /Bulut Senkroniz/i }).first().click();
     await expect(page.getByText(/Senkronizasyon|Bulut|yedek/i).first()).toBeVisible({ timeout: 15_000 });
   });
 

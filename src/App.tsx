@@ -261,7 +261,7 @@ export function App() {
             onImportPrompts={handleImportPrompts}
           />
         )}
-        {activeTab === 'gramer_pratigi' && <GramerPratigiTab currentLanguage={currentLanguage} fossilizedErrors={fossilizedErrors} learningItems={learningItems} onAddLearningItem={handleAddLearningItem} onMarkErrorResolved={handleResolveFossilizedError} />}
+        {activeTab === 'gramer_pratigi' && <GramerPratigiTab currentLanguage={currentLanguage} fossilizedErrors={fossilizedErrors} learningItems={learningItems} onMarkErrorResolved={handleResolveFossilizedError} />}
         {activeTab === 'nasil_soylerim' && <NasilSoylerimTab currentLanguage={currentLanguage} onAddLearningItem={handleAddLearningItem} />}
         {activeTab === 'sohbet' && <SohbetTab currentLanguage={currentLanguage} />}
         {activeTab === 'ilerleme' && <IlerlemeTab currentLanguage={currentLanguage} learningItems={learningItems} fossilizedErrors={fossilizedErrors} dailyHistory={dailyHistory} onResolveFossilizedError={handleResolveFossilizedError} onClearData={handleClearData} onImportPrompts={handleImportPrompts} onAddLearningItems={handleAddLearningItems} />}
@@ -282,7 +282,9 @@ export function App() {
         onContinue={handleContinueSession}
         onEndSession={handleEndSession}
       />
-      <FloatingAssistantChat currentLanguage={currentLanguage} onLanguageChange={setCurrentLanguage} activeTab={activeTab} onTabChange={setActiveTab} darkMode={darkMode} onToggleDarkMode={setDarkMode} onOpenNotifications={() => setShowNotificationModal(true)} onOpenCloudSync={() => setShowCloudSyncModal(true)} />
+      {activeTab !== 'sohbet' && (
+        <FloatingAssistantChat currentLanguage={currentLanguage} onLanguageChange={setCurrentLanguage} activeTab={activeTab} onTabChange={setActiveTab} darkMode={darkMode} onToggleDarkMode={setDarkMode} onOpenNotifications={() => setShowNotificationModal(true)} onOpenCloudSync={() => setShowCloudSyncModal(true)} />
+      )}
     </div>
   );
 }
