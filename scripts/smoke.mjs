@@ -80,11 +80,25 @@ check('İstek boyutu sınırlandırılmış', edgeFunction.includes('MAX_BODY_CH
 check('Build komutu smoke testini çalıştırıyor', JSON.parse(packageJson).scripts?.build?.includes('npm run smoke'), 'Build öncesi smoke testi bağlı değil.');
 check('Gramer modülü merkezi API istemcisini kullanıyor', grammarTab.includes('callLinguaApi') && !grammarTab.includes("fetch('/api/"), 'Gramer modülünde eski göreli API çağrısı kaldı.');
 check(
-  'Gramer modülü tüm API değerlendirme sonuçlarını kabul ediyor',
-  grammarTab.includes("'natural_variant'") &&
-    grammarTab.includes("'incorrect'") &&
-    grammarTab.includes('isSuccessfulVerdict'),
-  'Doğal alternatif veya yanlış cevap sonucu Gramer Pratiği tarafından reddedilebilir.',
+  'Gramer modülü quiz sonuçlarını şema ile doğruluyor',
+  grammarTab.includes('validQuizQuestion') &&
+    grammarTab.includes('correctOptionIndex') &&
+    grammarTab.includes('explanationTr'),
+  'Gramer Koçu quiz soruları şema doğrulaması olmadan kabul edilebilir.',
+);
+check(
+  'Gramer Koçu hem kişisel hatalardan hem seviye konusundan test üretebiliyor',
+  grammarTab.includes("mode === 'errors'") &&
+    grammarTab.includes('topicFocus') &&
+    grammarTab.includes('errorTopics'),
+  'Kişisel/seviye mod ayrımı veya topicFocus payloadı eksik.',
+);
+check(
+  'Gramer Koçu eski cümle kurma akışını içermiyor',
+  !grammarTab.includes('generate-grammar-drills') &&
+    !grammarTab.includes('generate-grammar-hint') &&
+    !grammarTab.includes('Cümle Kurma Alıştırmaları'),
+  'Kaldırılan Cümle Kurma bölümü hâlâ kodda.',
 );
 check('Lingua Asistan merkezi API istemcisini kullanıyor', floatingAssistant.includes('callLinguaApi') && !floatingAssistant.includes("fetch('/api/"), 'Lingua Asistan içinde eski göreli API çağrısı kaldı.');
 check('Asistan eylemleri izinli sekmelerle sınırlandırılmış', floatingAssistant.includes('VALID_TABS') && floatingAssistant.includes('VALID_TABS.has'), 'Sunucudan gelen sekme eylemleri doğrulanmıyor.');

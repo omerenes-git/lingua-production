@@ -16,7 +16,7 @@ Kod tabanından (2026-08-06) çıkarılmıştır. Kaynak: root `src/` (web + APK
 |-------|----------|---------|----------------|
 | Bugün | `bugun` | `BugunTab.tsx` | Günlük hedef, FSRS due kartlar, hızlı gezinme kartları |
 | Üret (Pratik) | `uret` | `UretTab.tsx` | Türkçe kaynak cümle → hedef dilde cevap → AI değerlendirme → FSRS; ipucu merdiveni (6 seviye); kelime yardımı; ses |
-| Gramer Koçu | `gramer_pratigi` | `GramerPratigiTab.tsx` | Hata profili + 2-3 dk mini ders + quiz; CEFR A1-C2 drill'ler + AI üretim |
+| Gramer Koçu | `gramer_pratigi` | `GramerPratigiTab.tsx` | 2 mod: (1) Hatalarımdan Öğren — hata profili + mini ders + kişisel quiz; (2) Seviyeme Göre Çalış — CEFR A1-C2 seviye/kılavuz seçimi + mini ders + konu bazlı quiz |
 | Nasıl Söylerim? | `nasil_soylerim` | `NasilSoylerimTab.tsx` | Türkçe → doğal/klinik/resmî seçenekler, öğrenme destesine ekle |
 | Sohbet | `sohbet` | `SohbetTab.tsx` | Rol odaklı çok turlu sohbet (persona seçimi, AI yanıt, çeviri) |
 | İlerleme & Hatalarım | `ilerleme` | `IlerlemeTab.tsx` | CEFR tahmini, aktivite, LingQ, hatalar, kelimeler, haftalık rapor, JSON yedek, veri temizleme |
@@ -31,7 +31,7 @@ Kod tabanından (2026-08-06) çıkarılmıştır. Kaynak: root `src/` (web + APK
 | Üret: cevap + değerlendirme | UretTab | AI değerlendirme sonucu + FSRS rating | uret.spec (canlı AI) |
 | Üret: ipucu | UretTab | Varsayılan kapalı, butonla açılır, 6 seviye, küçültülebilir | uret.spec |
 | Kelime yardımı | UretTab + VocabularyTooltip | Hedef dilde anlam, cache (dil+kelime anahtarlı) | uret.spec + vitest (VocabularyTooltip) |
-| Gramer Koçu | GramerPratigiTab | Hata profili, mini ders, quiz, CEFR filtresi, AI drill/ipucu/değerlendirme | `other-tabs.spec.ts` 6/6 |
+| Gramer Koçu | GramerPratigiTab | 2 mod (kişisel hatalar / seviye konusu), mini ders, quiz, topicFocus AI test | `other-tabs.spec.ts` 8/8 |
 | Nasıl Söylerim? | NasilSoylerimTab | AI çeviri seçenekleri, deste ekleme | other-tabs |
 | Sohbet | SohbetTab | Persona seçimi, mesaj gönderme, AI yanıt | other-tabs |
 | İlerleme | IlerlemeTab | CEFR, istatistikler, alt sekmeler | navigation.spec |
