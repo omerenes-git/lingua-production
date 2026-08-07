@@ -50,9 +50,7 @@ Kod tabanından (2026-08-06) çıkarılmıştır. Kaynak: root `src/` (web + APK
 - `/api/how-do-i-say` — Nasıl Söylerim çeviri seçenekleri
 - `/api/chat` — Sohbet yanıtı
 - `/api/lookup-word` — kelime sözlüğü (hedef dilde anlam + Türkçe ikincil gloss)
-- `/api/generate-grammar-drills` — CEFR'li drill üretimi (errorTopics'ten beslenir)
-- `/api/generate-grammar-hint` — seviyeye göre ipucu
-- `/api/generate-error-quiz` — kişisel hata quiz'i
+- `/api/generate-error-quiz` — Gramer Koçu quiz'i: kişisel hata modu (errorTopics/focusCategory) veya seviye modu (cefrLevel/topicFocus)
 - `/api/generate-production-prompts` — yeni üretim cümleleri (avoidSentences + errorTopics)
 - `/api/assistant-chat` — FloatingAssistantChat eylemleri
 - `/api/lingq/stats` — LingQ kart istatistikleri
