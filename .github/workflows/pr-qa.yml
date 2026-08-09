@@ -52,6 +52,8 @@ jobs:
         run: npm run build
 
       - name: Install Playwright Chromium
+        env:
+          PLAYWRIGHT_BROWSERS_PATH: /tmp/pw-browsers
         run: npx playwright install chromium --with-deps
 
       - name: Run baseline Playwright E2E (no credentials)

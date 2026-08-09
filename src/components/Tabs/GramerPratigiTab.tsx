@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react';
+import { motion } from 'framer-motion';
 import { ErrorCategory, FossilizedError, LearningItem, TargetLanguage } from '../../types';
 import { callLinguaApi } from '../../lib/linguaApi';
 import { countUnresolvedErrorCategories } from '../../lib/errorCategory';
@@ -881,20 +882,33 @@ export const GramerPratigiTab: React.FC<GramerPratigiTabProps> = ({
           <div>
             <span className="text-[10px] uppercase tracking-wider font-black text-violet-600">Seviye Seç</span>
             <div className="mt-2 flex flex-wrap gap-2">
-              {(['A1', 'A2', 'B1', 'B2', 'C1', 'C2'] as CefrLevel[]).map((level) => (
-                <button
-                  key={level}
-                  type="button"
-                  onClick={() => selectLevel(level)}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
-                    cefrLevel === level
-                      ? 'bg-violet-600 text-white border-violet-600 shadow-xs'
-                      : 'bg-white text-slate-600 border-slate-200 hover:border-violet-400'
-                  }`}
-                >
-                  {level}
-                </button>
-              ))}
+              {(['A1', 'A2', 'B1', 'B2', 'C1', 'C2'] as CefrLevel[]).map((level) => {
+                const levelColors: Record<string, string> = {
+                  A1: 'from-rose-500 to-rose-600 border-rose-500',
+                  A2: 'from-orange-500 to-orange-600 border-orange-500',
+                  B1: 'from-amber-500 to-yellow-600 border-amber-500',
+                  B2: 'from-emerald-500 to-green-600 border-emerald-500',
+                  C1: 'from-sky-500 to-blue-600 border-sky-500',
+                  C2: 'from-violet-500 to-fuchsia-600 border-violet-500',
+                };
+                const active = cefrLevel === level;
+                return (
+                  <motion.button
+                    key={level}
+                    type="button"
+                    onClick={() => selectLevel(level)}
+                    whileTap={{ scale: 0.92 }}
+                    whileHover={{ scale: 1.06 }}
+                    className={`px-4 py-2 rounded-xl text-sm font-black border-2 transition-all cursor-pointer shadow-xs ${
+                      active
+                        ? `bg-gradient-to-br text-white ${levelColors[level]} shadow-md`
+                        : 'bg-white text-slate-600 border-slate-200 hover:border-violet-400 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700'
+                    }`}
+                  >
+                    {level}
+                  </motion.button>
+                );
+              })}
             </div>
             <p className="text-[10px] text-slate-400 mt-1.5">
               Önerilen: {DEFAULT_CEFR_LEVEL} · Uygulama verilerine göre tahminin: {estimateCefrLevel(learningItems, currentLanguage).level ?? '—'}
@@ -907,26 +921,35 @@ export const GramerPratigiTab: React.FC<GramerPratigiTabProps> = ({
             <div className="mt-2 flex flex-wrap gap-2">
               {levelTopics
                 .filter((topic) => topic.cefrLevel === cefrLevel)
-                .map((topic) => (
-                  <button
-                    key={topic.grammarTopic}
-                    type="button"
-                    onClick={() => { setSelectedTopic(topic); resetQuiz(); }}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
-                      activeTopic?.grammarTopic === topic.grammarTopic
-                        ? 'bg-fuchsia-600 text-white border-fuchsia-600 shadow-xs'
-                        : 'bg-white text-slate-600 border-slate-200 hover:border-fuchsia-400'
-                    }`}
-                  >
-                    {topic.grammarTopic}
-                  </button>
-                ))}
+                .map((topic) => {
+                  const active = activeTopic?.grammarTopic === topic.grammarTopic;
+                  return (
+                    <motion.button
+                      key={topic.grammarTopic}
+                      type="button"
+                      onClick={() => { setSelectedTopic(topic); resetQuiz(); }}
+                      whileTap={{ scale: 0.95 }}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
+                        active
+                          ? 'bg-fuchsia-600 text-white border-fuchsia-600 shadow-md'
+                          : 'bg-white text-slate-600 border-slate-200 hover:border-fuchsia-400 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700'
+                      }`}
+                    >
+                      {topic.grammarTopic}
+                    </motion.button>
+                  );
+                })}
             </div>
           </div>
 
           {/* Seçili konunun mini dersi */}
           {activeTopic && (
-            <div className="rounded-2xl border border-violet-100 bg-gradient-to-br from-violet-50/70 to-sky-50/50 p-4 space-y-3">
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.25 }}
+              className="rounded-2xl border border-violet-100 bg-gradient-to-br from-violet-50/70 to-sky-50/50 p-4 space-y-3"
+            >
               <span className="text-xs font-black text-violet-900">
                 ⏱️ Mini Ders: {activeTopic.cefrLevel} · {activeTopic.grammarTopic}
               </span>
@@ -949,7 +972,7 @@ export const GramerPratigiTab: React.FC<GramerPratigiTabProps> = ({
               <div className="p-2.5 rounded-xl bg-amber-50 border border-amber-200/70 text-[11px] text-amber-900 leading-relaxed">
                 💡 <strong>Pratik ipucu:</strong> {activeTopic.tipTr}
               </div>
-            </div>
+            </motion.div>
           )}
 
           {/* Seviye modu testi */}

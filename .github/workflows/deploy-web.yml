@@ -41,6 +41,8 @@ jobs:
         run: npm test
 
       - name: Build production web app
+        env:
+          VITE_GITHUB_PAGES: 'true'
         run: npm run build
 
       - name: Configure GitHub Pages

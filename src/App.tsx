@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { TargetLanguage, LearningItem, ProductionPrompt, ProductionAttempt, FossilizedError } from './types';
 import { deriveErrorCategory } from './lib/errorCategory';
 import { INITIAL_PROMPTS, INITIAL_ITEMS } from './data/initialData';
@@ -247,24 +248,34 @@ export function App() {
       <CloudSyncModal isOpen={showCloudSyncModal} onClose={() => setShowCloudSyncModal(false)} itemCount={learningItems.length} errorCount={fossilizedErrors.length} />
       <Header currentLanguage={currentLanguage} onLanguageChange={setCurrentLanguage} streakCount={streakCount} dueCount={dueCount} activeCount={activeCount} passiveCount={passiveCount} activeTab={activeTab} onTabChange={setActiveTab} darkMode={darkMode} onToggleDarkMode={() => setDarkMode(!darkMode)} onOpenNotifications={() => setShowNotificationModal(true)} onOpenCloudSync={() => setShowCloudSyncModal(true)} onOpenPwaModal={() => setShowPwaModal(true)} />
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
-        {activeTab === 'bugun' && <BugunTab currentLanguage={currentLanguage} learningItems={learningItems} fossilizedErrors={fossilizedErrors} onNavigateTab={setActiveTab} />}
-        {activeTab === 'uret' && (
-          <UretTab
-            currentLanguage={currentLanguage}
-            prompts={prompts}
-            learningItems={learningItems}
-            fossilizedErrors={fossilizedErrors}
-            seenPromptIds={sessionSeenIds[currentLanguage] || []}
-            onPromptShown={handlePromptShown}
-            onRecordAttempt={handleRecordAttempt}
-            onAddLearningItem={handleAddLearningItem}
-            onImportPrompts={handleImportPrompts}
-          />
-        )}
-        {activeTab === 'gramer_pratigi' && <GramerPratigiTab currentLanguage={currentLanguage} fossilizedErrors={fossilizedErrors} learningItems={learningItems} onMarkErrorResolved={handleResolveFossilizedError} />}
-        {activeTab === 'nasil_soylerim' && <NasilSoylerimTab currentLanguage={currentLanguage} onAddLearningItem={handleAddLearningItem} />}
-        {activeTab === 'sohbet' && <SohbetTab currentLanguage={currentLanguage} />}
-        {activeTab === 'ilerleme' && <IlerlemeTab currentLanguage={currentLanguage} learningItems={learningItems} fossilizedErrors={fossilizedErrors} dailyHistory={dailyHistory} onResolveFossilizedError={handleResolveFossilizedError} onClearData={handleClearData} onImportPrompts={handleImportPrompts} onAddLearningItems={handleAddLearningItems} />}
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={activeTab}
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -12 }}
+            transition={{ duration: 0.2, ease: 'easeOut' }}
+          >
+            {activeTab === 'bugun' && <BugunTab currentLanguage={currentLanguage} learningItems={learningItems} fossilizedErrors={fossilizedErrors} dailyHistory={dailyHistory} onNavigateTab={setActiveTab} />}
+            {activeTab === 'uret' && (
+              <UretTab
+                currentLanguage={currentLanguage}
+                prompts={prompts}
+                learningItems={learningItems}
+                fossilizedErrors={fossilizedErrors}
+                seenPromptIds={sessionSeenIds[currentLanguage] || []}
+                onPromptShown={handlePromptShown}
+                onRecordAttempt={handleRecordAttempt}
+                onAddLearningItem={handleAddLearningItem}
+                onImportPrompts={handleImportPrompts}
+              />
+            )}
+            {activeTab === 'gramer_pratigi' && <GramerPratigiTab currentLanguage={currentLanguage} fossilizedErrors={fossilizedErrors} learningItems={learningItems} onMarkErrorResolved={handleResolveFossilizedError} />}
+            {activeTab === 'nasil_soylerim' && <NasilSoylerimTab currentLanguage={currentLanguage} onAddLearningItem={handleAddLearningItem} />}
+            {activeTab === 'sohbet' && <SohbetTab currentLanguage={currentLanguage} />}
+            {activeTab === 'ilerleme' && <IlerlemeTab currentLanguage={currentLanguage} learningItems={learningItems} fossilizedErrors={fossilizedErrors} dailyHistory={dailyHistory} onResolveFossilizedError={handleResolveFossilizedError} onClearData={handleClearData} onImportPrompts={handleImportPrompts} onAddLearningItems={handleAddLearningItems} />}
+          </motion.div>
+        </AnimatePresence>
       </main>
       <footer className="bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 py-4 mt-auto transition-colors pb-16 sm:pb-4">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 flex-wrap gap-2">

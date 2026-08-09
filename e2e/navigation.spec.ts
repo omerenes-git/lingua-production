@@ -58,6 +58,8 @@ test.describe('İlerleme & Hatalarım', () => {
     await expect(page.getByText(/Tahmini CEFR/i)).toBeVisible();
     // Aktivite alt sekmesine geç
     await page.getByRole('button', { name: /Aktivite/i }).click();
-    await expect(page.getByText(/Son 7 günün kayıtlı çalışmaları/i)).toBeVisible();
+    // Isı haritası (28 günlük çalışma grid'i) görünür
+    await expect(page.getByText(/Isı Haritası/i)).toBeVisible();
+    await expect(page.getByText(/Son 7 günün detaylı grafiği/i)).toBeVisible();
   });
 });

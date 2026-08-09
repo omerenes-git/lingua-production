@@ -1,6 +1,19 @@
 import React from 'react';
+import { motion } from 'framer-motion';
 import { TargetLanguage } from '../types';
-import { Flame, Activity, Stethoscope, RefreshCw, CheckCircle2, Moon, Sun, Bell, Cloud, Smartphone } from 'lucide-react';
+import {
+  Flame,
+  Clock,
+  Zap,
+  Moon,
+  Sun,
+  Bell,
+  Cloud,
+  Smartphone,
+  BookOpen,
+  LogOut,
+  Sparkles,
+} from 'lucide-react';
 
 interface HeaderProps {
   currentLanguage: TargetLanguage;
@@ -16,6 +29,7 @@ interface HeaderProps {
   onOpenNotifications: () => void;
   onOpenCloudSync: () => void;
   onOpenPwaModal?: () => void;
+  onSignOut?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -23,8 +37,6 @@ export const Header: React.FC<HeaderProps> = ({
   onLanguageChange,
   streakCount,
   dueCount,
-  activeCount,
-  passiveCount,
   activeTab,
   onTabChange,
   darkMode,
@@ -32,6 +44,7 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenNotifications,
   onOpenCloudSync,
   onOpenPwaModal,
+  onSignOut,
 }) => {
   const languageNames: Record<TargetLanguage, { name: string; flag: string }> = {
     en: { name: 'İngilizce', flag: '🇬🇧' },
@@ -39,165 +52,152 @@ export const Header: React.FC<HeaderProps> = ({
     sr: { name: 'Sırpça', flag: '🇷🇸' },
   };
 
-  const [isOnline, setIsOnline] = React.useState<boolean>(() => navigator.onLine);
-
-  React.useEffect(() => {
-    const handleOnline = () => setIsOnline(true);
-    const handleOffline = () => setIsOnline(false);
-
-    window.addEventListener('online', handleOnline);
-    window.addEventListener('offline', handleOffline);
-
-    return () => {
-      window.removeEventListener('online', handleOnline);
-      window.removeEventListener('offline', handleOffline);
-    };
-  }, []);
-
-  const navItems = [
-    { id: 'bugun', label: 'Bugün' },
-    { id: 'uret', label: 'Üret (Pratik)' },
-    { id: 'gramer_pratigi', label: 'Gramer Koçu' },
-    { id: 'nasil_soylerim', label: 'Nasıl Söylerim?' },
-    { id: 'sohbet', label: 'Sohbet' },
-    { id: 'ilerleme', label: 'İlerleme & Hatalarım' },
+  const tabs = [
+    { id: 'bugun', label: 'Bugün', icon: Sparkles },
+    { id: 'uret', label: 'Üret (Pratik)', icon: Zap },
+    { id: 'gramer_pratigi', label: 'Gramer Koçu', icon: BookOpen },
+    { id: 'nasil_soylerim', label: 'Nasıl Söylerim?', icon: Sparkles },
+    { id: 'sohbet', label: 'Sohbet', icon: Bell },
+    { id: 'ilerleme', label: 'İlerleme & Hatalarım', icon: Clock },
   ];
 
   return (
-    <header className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 sticky top-0 z-30 shadow-sm transition-colors">
-      {/* Top Banner */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex flex-wrap items-center justify-between gap-4">
-        {/* Brand */}
-        <div className="flex items-center space-x-3">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-sky-600 to-indigo-600 flex items-center justify-center text-white shadow-md shadow-sky-200 dark:shadow-none">
-            <Stethoscope className="w-5 h-5" />
-          </div>
-          <div>
-            <div className="flex items-center space-x-2">
-              <h1 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight">Lingua Production Coach</h1>
-            </div>
-            <p className="text-xs text-slate-500 dark:text-slate-400">Pasif ezber değil, aktif üretim & FSRS aralıklı tekrar</p>
-          </div>
-        </div>
-
-        {/* Status Badges & Controls */}
-        <div className="flex items-center flex-wrap gap-2 sm:gap-3">
-          {/* Target Language Switcher */}
-          <div className="flex items-center bg-slate-100 dark:bg-slate-800 p-1 rounded-xl border border-slate-200 dark:border-slate-700">
-            {(['en', 'de', 'sr'] as TargetLanguage[]).map((lang) => (
-              <button
-                key={lang}
-                onClick={() => onLanguageChange(lang)}
-                className={`px-2.5 py-1 text-xs font-medium rounded-lg transition-all flex items-center space-x-1 ${
-                  currentLanguage === lang
-                    ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-xs font-semibold'
-                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-                }`}
-              >
-                <span>{languageNames[lang].flag}</span>
-                <span>{languageNames[lang].name}</span>
-              </button>
-            ))}
-          </div>
-
-          {/* PWA Install Button */}
-          {onOpenPwaModal && (
-            <button
-              onClick={onOpenPwaModal}
-              className="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-indigo-50 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 hover:bg-indigo-100 dark:hover:bg-indigo-900 transition-all shadow-2xs"
-              title="Telefona veya Tablete Yükle (PWA & Ana Ekrana Ekle)"
+    <header className="sticky top-0 z-40 backdrop-blur-md bg-white/90 dark:bg-slate-900/90 border-b border-slate-200 dark:border-slate-800 transition-colors duration-200 shadow-xs">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3">
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex items-center space-x-3">
+            <motion.div
+              whileHover={{ rotate: 10, scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              className="w-10 h-10 rounded-xl bg-gradient-to-tr from-emerald-500 via-teal-500 to-indigo-600 flex items-center justify-center text-white shadow-md font-bold text-xl"
             >
-              <Smartphone className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
-              <span>Telefona Yükle</span>
-            </button>
-          )}
+              L
+            </motion.div>
+            <div>
+              <h1 className="text-lg font-bold bg-gradient-to-r from-emerald-600 via-teal-600 to-indigo-600 dark:from-emerald-400 dark:via-teal-400 dark:to-indigo-400 bg-clip-text text-transparent leading-tight">
+                Lingua Production Coach
+              </h1>
+              <p className="text-xs text-slate-500 dark:text-slate-400 hidden sm:block">
+                Pasif ezber değil, aktif üretim & FSRS aralıklı tekrar
+              </p>
+            </div>
+          </div>
 
-          {/* Cloud Sync Button */}
-          <button
-            onClick={onOpenCloudSync}
-            className="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-sky-50 dark:bg-sky-950/50 text-sky-700 dark:text-sky-300 border border-sky-200 dark:border-sky-800 hover:bg-sky-100 dark:hover:bg-sky-900 transition-all shadow-2xs"
-            title="Bulut Senkronizasyon Durumu (Çoklu Cihaz Eşitleme)"
-          >
-            <Cloud className="w-3.5 h-3.5 text-sky-600 dark:text-sky-400" />
-            <span className="hidden sm:inline">Bulut Senkronize</span>
-          </button>
+          <div className="flex items-center space-x-1 sm:space-x-2 bg-slate-100 dark:bg-slate-800/80 p-1 rounded-xl">
+            {(['en', 'de', 'sr'] as TargetLanguage[]).map((lang) => {
+              const isActive = currentLanguage === lang;
+              return (
+                <button
+                  key={lang}
+                  onClick={() => onLanguageChange(lang)}
+                  aria-label={`${languageNames[lang].flag} ${languageNames[lang].name}`}
+                  className={`relative px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center space-x-1.5 ${
+                    isActive
+                      ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-xs'
+                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                  }`}
+                >
+                  <span>{languageNames[lang].flag}</span>
+                  <span className="hidden md:inline">{languageNames[lang].name}</span>
+                </button>
+              );
+            })}
+          </div>
 
-          {/* Notification Button */}
-          <button
-            onClick={onOpenNotifications}
-            className="relative p-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 transition-all"
-            title="Bildirimler & Hatırlatıcı"
-          >
-            <Bell className="w-4 h-4" />
+          <div className="flex items-center space-x-2">
+            <motion.div
+              whileHover={{ scale: 1.05 }}
+              className="flex items-center space-x-1 px-2.5 py-1 rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 text-xs font-semibold"
+              title="Günlük Çalışma Serisi"
+            >
+              <Flame className="w-4 h-4 text-amber-500 fill-amber-500 animate-pulse" />
+              <span>{streakCount} Gün</span>
+            </motion.div>
+
             {dueCount > 0 && (
-              <span className="absolute -top-1 -right-1 w-4 h-4 bg-rose-500 text-white text-[10px] font-extrabold rounded-full flex items-center justify-center animate-bounce">
-                {dueCount}
-              </span>
+              <motion.div
+                whileHover={{ scale: 1.05 }}
+                className="flex items-center space-x-1 px-2.5 py-1 rounded-xl bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20 text-xs font-semibold"
+                title="Tekrar Bekleyen Kartlar"
+              >
+                <Clock className="w-4 h-4 text-indigo-500" />
+                <span>{dueCount} Tekrar</span>
+              </motion.div>
             )}
-          </button>
 
-          {/* Dark Mode Toggle Button */}
-          <button
-            onClick={onToggleDarkMode}
-            className="p-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 transition-all"
-            title={darkMode ? 'Aydınlık Mod' : 'Koyu Tema'}
-          >
-            {darkMode ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4 text-slate-700" />}
-          </button>
+            <button
+              onClick={onOpenCloudSync}
+              className="p-2 rounded-xl text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+              title="Bulut Senkronizasyon Status"
+              aria-label="Bulut Senkronize"
+            >
+              <Cloud className="w-4 h-4" />
+            </button>
 
-          {/* Streak Badge */}
-          <div className="flex items-center space-x-1.5 px-3 py-1.5 bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 border border-amber-200/60 dark:border-amber-800/60 rounded-xl text-xs font-medium">
-            <Flame className="w-4 h-4 text-amber-500 fill-amber-500" />
-            <span>{streakCount} Gün Seri</span>
-          </div>
+            <button
+              onClick={onOpenNotifications}
+              className="p-2 rounded-xl text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+              title="Bildirim Ayarları"
+              aria-label="Bildirimler"
+            >
+              <Bell className="w-4 h-4" />
+            </button>
 
-          {/* SRS Due Badge */}
-          <div className="flex items-center space-x-1.5 px-3 py-1.5 bg-sky-50 dark:bg-sky-950/40 text-sky-800 dark:text-sky-300 border border-sky-200/60 dark:border-sky-800/60 rounded-xl text-xs font-medium">
-            <RefreshCw className="w-3.5 h-3.5 text-sky-600 dark:text-sky-400" />
-            <span>{dueCount} Tekrar Bekliyor</span>
-          </div>
+            <button
+              onClick={onToggleDarkMode}
+              className="p-2 rounded-xl text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+              title={darkMode ? 'Aydınlık Tema' : 'Koyu Tema'}
+              aria-label={darkMode ? 'Aydınlık Tema' : 'Koyu Tema'}
+            >
+              {darkMode ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4 text-slate-600" />}
+            </button>
 
-          {/* Online / Offline Network Badge */}
-          <div className={`hidden sm:flex items-center space-x-1.5 px-3 py-1.5 rounded-xl text-xs font-bold border ${
-            isOnline 
-              ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 border-emerald-200/60 dark:border-emerald-800/60'
-              : 'bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 border-amber-200/60 dark:border-amber-800/60'
-          }`}>
-            <span className={`w-2 h-2 rounded-full ${isOnline ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'}`} />
-            <span>{isOnline ? 'Çevrimiçi' : 'Çevrimdışı (PWA)'}</span>
-          </div>
+            {onOpenPwaModal && (
+              <button
+                onClick={onOpenPwaModal}
+                className="hidden lg:flex items-center space-x-1 px-2.5 py-1.5 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 text-xs font-medium hover:bg-emerald-500/20 transition-colors"
+              >
+                <Smartphone className="w-3.5 h-3.5" />
+                <span>Telefona Yükle</span>
+              </button>
+            )}
 
-          {/* Active vs Passive Badge */}
-          <div className="hidden lg:flex items-center space-x-2 text-xs bg-slate-50 dark:bg-slate-800 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300">
-            <span className="flex items-center space-x-1">
-              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
-              <span><strong>{activeCount}</strong> Aktif</span>
-            </span>
-            <span className="text-slate-300 dark:text-slate-600">|</span>
-            <span className="flex items-center space-x-1">
-              <Activity className="w-3.5 h-3.5 text-indigo-500" />
-              <span><strong>{passiveCount}</strong> Pasif</span>
-            </span>
+            {onSignOut && (
+              <button
+                onClick={onSignOut}
+                className="p-2 rounded-xl text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition-colors"
+                title="Oturumu Kapat"
+                aria-label="Oturumu kapat"
+              >
+                <LogOut className="w-4 h-4" />
+              </button>
+            )}
           </div>
         </div>
-      </div>
 
-      {/* Main Navigation Tabs */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 border-t border-slate-100 dark:border-slate-800 overflow-x-auto custom-scrollbar">
-        <nav className="flex space-x-1 py-1">
-          {navItems.map((item) => {
-            const isActive = activeTab === item.id;
+        <nav className="flex items-center space-x-1 mt-3 overflow-x-auto no-scrollbar pb-1">
+          {tabs.map((tab) => {
+            const isActive = activeTab === tab.id;
+            const Icon = tab.icon;
             return (
               <button
-                key={item.id}
-                onClick={() => onTabChange(item.id)}
-                className={`px-4 py-2 text-sm font-medium rounded-lg whitespace-nowrap transition-colors ${
+                key={tab.id}
+                onClick={() => onTabChange(tab.id)}
+                className={`relative px-3 py-2 rounded-xl text-xs sm:text-sm font-medium transition-all whitespace-nowrap flex items-center space-x-2 ${
                   isActive
-                    ? 'bg-sky-600 text-white shadow-xs font-semibold'
-                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800'
+                    ? 'text-emerald-600 dark:text-emerald-400 font-semibold bg-emerald-50 dark:bg-emerald-950/40'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800/50'
                 }`}
               >
-                {item.label}
+                <Icon className={`w-4 h-4 ${isActive ? 'text-emerald-500' : 'text-slate-400'}`} />
+                <span>{tab.label}</span>
+                {isActive && (
+                  <motion.div
+                    layoutId="activeTabIndicator"
+                    className="absolute bottom-0 left-0 right-0 h-0.5 bg-emerald-500 rounded-full"
+                    transition={{ type: 'spring', stiffness: 500, damping: 30 }}
+                  />
+                )}
               </button>
             );
           })}
