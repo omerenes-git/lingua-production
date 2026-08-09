@@ -2,6 +2,9 @@ import confetti from 'canvas-confetti';
 
 function isCanvasSupported(): boolean {
   try {
+    // jsdom (vitest unit tests) cannot run canvas-confetti — it has no real
+    // 2D context and its rAF loop starves the test event loop (timeouts).
+    if (typeof navigator !== 'undefined' && /jsdom/i.test(navigator.userAgent)) return false;
     if (typeof window === 'undefined' || typeof document === 'undefined') return false;
     const canvas = document.createElement('canvas');
     return Boolean(canvas.getContext && canvas.getContext('2d'));

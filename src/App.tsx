@@ -256,7 +256,7 @@ export function App() {
             exit={{ opacity: 0, y: -12 }}
             transition={{ duration: 0.2, ease: 'easeOut' }}
           >
-            {activeTab === 'bugun' && <BugunTab currentLanguage={currentLanguage} learningItems={learningItems} fossilizedErrors={fossilizedErrors} onNavigateTab={setActiveTab} />}
+            {activeTab === 'bugun' && <BugunTab currentLanguage={currentLanguage} learningItems={learningItems} fossilizedErrors={fossilizedErrors} dailyHistory={dailyHistory} onNavigateTab={setActiveTab} />}
             {activeTab === 'uret' && (
               <UretTab
                 currentLanguage={currentLanguage}
