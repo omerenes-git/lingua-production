@@ -98,7 +98,19 @@ function readGeminiText(record: JsonRecord): string {
 
 function readOpenAiText(record: JsonRecord): string {
   if (typeof record.output_text === 'string') return record.output_text;
-  const outputText = asArray(record.output).flatMap((entry) => asArray(asRecord(entry).content)).map((entry) => asRecord(entry).text).filter((value): value is string => typeof value === 'string').join('');
+  // DeepSeek (ve bazı OpenAI-uyumlu sağlayıcılar) /v1/responses yanıtında
+  // JSON'dan ÖNCE bir "reasoning" bloğu döndürür. Reasoning metni JSON.parse'i
+  // bozar (metin içinde { } karakterleri olabilir) → yalnızca gerçek mesaj
+  // bloklarını (type === 'message' | 'output_text') topla, reasoning'i atla.
+  const outputText = asArray(record.output)
+    .filter((entry) => {
+      const type = asRecord(entry).type;
+      return type === 'message' || type === 'output_text';
+    })
+    .flatMap((entry) => asArray(asRecord(entry).content))
+    .map((entry) => asRecord(entry).text)
+    .filter((value): value is string => typeof value === 'string')
+    .join('');
   if (outputText) return outputText;
   const message = asRecord(asRecord(asArray(record.choices)[0]).message).content;
   if (typeof message === 'string') return message;
