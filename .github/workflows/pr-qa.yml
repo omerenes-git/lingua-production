@@ -53,7 +53,10 @@ jobs:
         # /lingua-production/ base'ini deploy-web.yml'deki kendi build'inden alır).
         env:
           GITHUB_ACTIONS: 'false'
-        run: npm run build
+        run: |
+          npm run build
+          echo "===== INDEX.HTML ASSETS ====="
+          grep -oE '(src|href)="[^"]*"' dist/index.html | head -12 || true
 
       - name: Install Playwright Chromium
         env:
