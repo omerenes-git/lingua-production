@@ -92,6 +92,7 @@ export const Header: React.FC<HeaderProps> = ({
                 <button
                   key={lang}
                   onClick={() => onLanguageChange(lang)}
+                  aria-label={`${languageNames[lang].flag} ${languageNames[lang].name}`}
                   className={`relative px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center space-x-1.5 ${
                     isActive
                       ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-xs'
