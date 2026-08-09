@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { TargetLanguage, RegisterOption, LearningItem } from '../../types';
 import { fetchHowDoISay } from '../../lib/aiService';
 import { speakText } from '../../lib/speech';

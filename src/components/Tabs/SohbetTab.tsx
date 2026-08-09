@@ -1,5 +1,4 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
 import { TargetLanguage, Persona, ChatMessage } from '../../types';
 import { INITIAL_PERSONAS } from '../../data/initialData';
 import { sendChatMessage } from '../../lib/aiService';

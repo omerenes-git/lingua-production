@@ -37,8 +37,6 @@ export const Header: React.FC<HeaderProps> = ({
   onLanguageChange,
   streakCount,
   dueCount,
-  activeCount,
-  passiveCount,
   activeTab,
   onTabChange,
   darkMode,
