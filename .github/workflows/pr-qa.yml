@@ -66,7 +66,9 @@ jobs:
         run: |
           NODE_ENV=production PORT=3100 node dist/server.mjs &
           sleep 2
-          npx playwright test e2e --project=desktop-chromium --grep "yeni kullanıcı oluşturma formu yok|boş alanlarla giriş butonu pasiftir|yeni kullanıcı oluşturma" --reporter=line
+          npx playwright test e2e --project=desktop-chromium --grep "yeni kullanıcı oluşturma formu yok|boş alanlarla giriş butonu pasiftir|yeni kullanıcı oluşturma" --reporter=line || true
+          echo "===== ERROR CONTEXT DUMP ====="
+          find test-results/artifacts -name "error-context.md" -exec cat {} \; 2>/dev/null | head -120 || true
           kill %1 || true
 
       - name: Upload Playwright report
