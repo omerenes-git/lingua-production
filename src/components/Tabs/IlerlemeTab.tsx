@@ -81,6 +81,22 @@ export const IlerlemeTab: React.FC<IlerlemeTabProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [JSON.stringify(history), currentLanguage]);
 
+  const twentyEightDayData = useMemo(() => {
+    const rows: Array<{ key: string; dateStr: string; count: number }> = [];
+    for (let offset = 27; offset >= 0; offset -= 1) {
+      const day = new Date();
+      day.setDate(day.getDate() - offset);
+      const key = dateKey(day);
+      rows.push({
+        key,
+        dateStr: day.toLocaleDateString('tr-TR', { month: 'short', day: 'numeric' }),
+        count: getDailyCount(history, currentLanguage, key),
+      });
+    }
+    return rows;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [JSON.stringify(history), currentLanguage]);
+
   const weeklyExerciseCount = sevenDayData.reduce((sum, row) => sum + row.count, 0);
   const streak = calculateLanguageStreak(history, currentLanguage);
   const correctionRate = langErrors.length > 0
@@ -175,8 +191,48 @@ export const IlerlemeTab: React.FC<IlerlemeTabProps> = ({
             <div className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900"><div className="text-xs text-slate-500">Son 7 gün</div><div className="text-2xl font-black">{weeklyExerciseCount} çalışma</div></div>
             <div className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900"><div className="text-xs text-slate-500">Hata çözme oranı</div><div className="text-2xl font-black">{correctionRate === null ? 'Veri yok' : `%${correctionRate}`}</div></div>
           </div>
+
+          {/* 28-Day Heatmap Grid */}
+          <div className="rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900 space-y-3">
+            <div className="flex items-center justify-between">
+              <h3 className="font-black text-sm text-slate-900 dark:text-slate-100">Son 28 Günlük Çalışma Isı Haritası (Heatmap)</h3>
+              <div className="flex items-center space-x-1 text-[10px] text-slate-400">
+                <span>Az</span>
+                <div className="w-2.5 h-2.5 rounded bg-slate-100 dark:bg-slate-800" />
+                <div className="w-2.5 h-2.5 rounded bg-emerald-200 dark:bg-emerald-900/60" />
+                <div className="w-2.5 h-2.5 rounded bg-emerald-400 dark:bg-emerald-600" />
+                <div className="w-2.5 h-2.5 rounded bg-emerald-600 dark:bg-emerald-400" />
+                <span>Çok</span>
+              </div>
+            </div>
+            <div className="grid grid-cols-7 sm:grid-cols-14 gap-2 pt-2">
+              {twentyEightDayData.map((item) => {
+                const count = item.count;
+                const bgClass =
+                  count === 0
+                    ? 'bg-slate-100 dark:bg-slate-800/80 text-slate-400'
+                    : count < 3
+                    ? 'bg-emerald-200 dark:bg-emerald-900/60 text-emerald-800 dark:text-emerald-200'
+                    : count < 6
+                    ? 'bg-emerald-400 dark:bg-emerald-600 text-white font-bold'
+                    : 'bg-emerald-600 dark:bg-emerald-400 text-white dark:text-slate-950 font-black';
+
+                return (
+                  <div
+                    key={item.key}
+                    title={`${item.dateStr}: ${count} çalışma`}
+                    className={`h-10 rounded-xl flex flex-col items-center justify-center text-[10px] transition-transform hover:scale-110 shadow-2xs ${bgClass}`}
+                  >
+                    <span>{item.dateStr.split(' ')[0]}</span>
+                    <span className="font-bold">{count > 0 ? count : '-'}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
           <div className="rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
-            <h3 className="font-black">Son 7 günün kayıtlı çalışmaları</h3>
+            <h3 className="font-black">Son 7 günün detaylı grafiği</h3>
             <div className="mt-4 grid grid-cols-7 gap-2">
               {sevenDayData.map((row) => (
                 <div key={row.key} className="text-center">

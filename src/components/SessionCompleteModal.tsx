@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { PartyPopper, ArrowRight, Home } from 'lucide-react';
 import { TargetLanguage } from '../types';
+import { triggerGoalConfetti } from '../lib/confetti';
 
 interface SessionCompleteModalProps {
   language: TargetLanguage | null;
@@ -21,6 +22,12 @@ export const SessionCompleteModal: React.FC<SessionCompleteModalProps> = ({
   onContinue,
   onEndSession,
 }) => {
+  useEffect(() => {
+    if (language) {
+      triggerGoalConfetti();
+    }
+  }, [language]);
+
   if (!language) return null;
 
   return (

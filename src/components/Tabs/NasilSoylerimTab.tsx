@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { TargetLanguage, RegisterOption, LearningItem } from '../../types';
 import { fetchHowDoISay } from '../../lib/aiService';
+import { speakText } from '../../lib/speech';
 import { HelpCircle, Sparkles, Plus, Check, Volume2, AlertTriangle } from 'lucide-react';
 
 interface NasilSoylerimTabProps {
@@ -30,12 +32,8 @@ export const NasilSoylerimTab: React.FC<NasilSoylerimTabProps> = ({ currentLangu
     }
   };
 
-  const speakText = (text: string) => {
-    if (!('speechSynthesis' in window)) return;
-    window.speechSynthesis.cancel();
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = { en: 'en-US', de: 'de-DE', sr: 'sr-RS' }[currentLanguage];
-    window.speechSynthesis.speak(utterance);
+  const handleSpeak = (text: string) => {
+    speakText(text, currentLanguage);
   };
 
   const handleAddToDeck = (opt: RegisterOption) => {
@@ -82,26 +80,32 @@ export const NasilSoylerimTab: React.FC<NasilSoylerimTabProps> = ({ currentLangu
       </div>
 
       {options.length > 0 && (
-        <div className="space-y-4">
-          <h3 className="text-base font-bold text-slate-900">Üretilen anlatım seçenekleri</h3>
+        <motion.div initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }} className="space-y-4">
+          <h3 className="text-base font-bold text-slate-900 dark:text-slate-100">Üretilen anlatım seçenekleri</h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {options.map((option, index) => {
               const isAdded = addedRegisters[option.register];
               return (
-                <div key={`${option.register}-${index}`} className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-3 flex flex-col justify-between">
+                <motion.div
+                  key={`${option.register}-${index}`}
+                  initial={{ opacity: 0, scale: 0.95 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  transition={{ delay: index * 0.08 }}
+                  className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs space-y-3 flex flex-col justify-between hover:shadow-md transition-all"
+                >
                   <div className="space-y-2">
-                    <div className="flex items-center justify-between"><span className="px-2.5 py-1 text-xs font-bold bg-indigo-50 text-indigo-700 rounded-md">{option.titleTr}</span><button onClick={() => speakText(option.textTarget)} className="p-1.5 text-slate-400 hover:text-indigo-600" title="Dinle"><Volume2 className="w-4 h-4" /></button></div>
-                    <p className="text-sm font-bold text-slate-900">“{option.textTarget}”</p>
-                    <p className="text-xs text-slate-500 bg-slate-50 p-2.5 rounded-lg border">{option.explanationTr}</p>
+                    <div className="flex items-center justify-between"><span className="px-2.5 py-1 text-xs font-bold bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 rounded-md">{option.titleTr}</span><button onClick={() => handleSpeak(option.textTarget)} className="p-1.5 text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors" title="Dinle"><Volume2 className="w-4 h-4" /></button></div>
+                    <p className="text-sm font-bold text-slate-900 dark:text-white">“{option.textTarget}”</p>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-800/60 p-2.5 rounded-lg border border-slate-200 dark:border-slate-700">{option.explanationTr}</p>
                   </div>
-                  <button onClick={() => handleAddToDeck(option)} disabled={isAdded} className={`w-full py-2 px-3 text-xs font-semibold rounded-lg border flex items-center justify-center space-x-1.5 ${isAdded ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-white text-indigo-700 border-indigo-200 hover:bg-indigo-50'}`}>
+                  <button onClick={() => handleAddToDeck(option)} disabled={isAdded} className={`w-full py-2 px-3 text-xs font-semibold rounded-lg border flex items-center justify-center space-x-1.5 transition-all ${isAdded ? 'bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800' : 'bg-white dark:bg-slate-800 text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800 hover:bg-indigo-50 dark:hover:bg-indigo-900/30'}`}>
                     {isAdded ? <><Check className="w-3.5 h-3.5" /><span>Öğrenme destesine eklendi</span></> : <><Plus className="w-3.5 h-3.5" /><span>Öğrenme destesine ekle</span></>}
                   </button>
-                </div>
+                </motion.div>
               );
             })}
           </div>
-        </div>
+        </motion.div>
       )}
     </div>
   );

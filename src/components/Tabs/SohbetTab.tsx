@@ -1,7 +1,9 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { TargetLanguage, Persona, ChatMessage } from '../../types';
 import { INITIAL_PERSONAS } from '../../data/initialData';
 import { sendChatMessage } from '../../lib/aiService';
+import { speakText } from '../../lib/speech';
 import {
   MessageSquare,
   Send,
@@ -131,13 +133,7 @@ export const SohbetTab: React.FC<SohbetTabProps> = ({ currentLanguage }) => {
     resetThread(persona);
   };
 
-  const speakText = (text: string) => {
-    if (!('speechSynthesis' in window)) return;
-    window.speechSynthesis.cancel();
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = { en: 'en-US', de: 'de-DE', sr: 'sr-RS' }[currentLanguage];
-    window.speechSynthesis.speak(utterance);
-  };
+
 
   const toggleSpeechRecognition = () => {
     if (!('webkitSpeechRecognition' in window || 'SpeechRecognition' in window)) {
@@ -297,7 +293,7 @@ export const SohbetTab: React.FC<SohbetTabProps> = ({ currentLanguage }) => {
                     <p className="font-semibold">{message.text}</p>
                     {!isUser && (
                       <div className="flex items-center gap-3 mt-2.5 pt-2 border-t border-slate-100">
-                        <button onClick={() => speakText(message.text)} className="text-[11px] text-emerald-700 font-bold flex items-center gap-1"><Volume2 className="w-3.5 h-3.5" /> Dinle</button>
+                        <button onClick={() => speakText(message.text, currentLanguage)} className="text-[11px] text-emerald-700 font-bold flex items-center gap-1 hover:underline transition-all"><Volume2 className="w-3.5 h-3.5" /> Dinle</button>
                         {message.translationTr && <button onClick={() => setShowTranslations((previous) => ({ ...previous, [message.id]: !previous[message.id] }))} className="text-[11px] text-slate-500 font-semibold">{showTranslation ? 'Çeviriyi gizle' : 'Çeviriyi göster'}</button>}
                       </div>
                     )}

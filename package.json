@@ -15,8 +15,11 @@
     "test:ai": "node scripts/ai-evaluate-regression.mjs"
   },
   "dependencies": {
+    "@types/canvas-confetti": "^1.9.0",
+    "canvas-confetti": "^1.9.4",
     "clsx": "^2.1.1",
     "express": "^4.21.2",
+    "framer-motion": "^13.0.0",
     "lucide-react": "^0.475.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",

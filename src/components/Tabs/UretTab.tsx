@@ -12,6 +12,7 @@ import {
   FossilizedError
 } from '../../types';
 import { decideFinalRating } from '../../lib/engine';
+import { triggerSuccessConfetti } from '../../lib/confetti';
 import { evaluateProduction } from '../../lib/aiService';
 import { callLinguaApi } from '../../lib/linguaApi';
 import { selectNextPrompt, SelectPromptResult } from '../../lib/sentenceSelector';
@@ -246,6 +247,9 @@ export const UretTab: React.FC<UretTabProps> = ({
     });
 
     setEvaluation(evalResult);
+    if (evalResult.overallVerdict === 'correct') {
+      triggerSuccessConfetti();
+    }
     setFinalRatingInfo({
       rating: decision.finalRating,
       isFossilized: decision.isFossilizedError,
