@@ -49,22 +49,16 @@ jobs:
         run: npm test
 
       - name: Build web bundle
+        # CI'da localhost E2E için base '/' ile build et (GitHub Pages deploy'u
+        # /lingua-production/ base'ini deploy-web.yml'deki kendi build'inden alır).
+        env:
+          GITHUB_ACTIONS: 'false'
         run: npm run build
 
       - name: Install Playwright Chromium
         env:
           PLAYWRIGHT_BROWSERS_PATH: /tmp/pw-browsers
         run: npx playwright install chromium --with-deps
-
-      - name: Debug — verify server serves the SPA
-        run: |
-          NODE_ENV=production PORT=3100 node dist/server.mjs &
-          sleep 2
-          curl -s -o /dev/null -w "health: HTTP %{http_code}\n" http://localhost:3100/api/health || true
-          curl -s http://localhost:3100/ | head -c 300 || true
-          echo ""
-          ls -la dist/ | head -5 || true
-          kill %1 || true
 
       - name: Run baseline Playwright E2E (no credentials)
         env:
