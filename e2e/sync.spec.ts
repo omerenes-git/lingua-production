@@ -76,9 +76,21 @@ test.describe('LingQ entegrasyonu', () => {
     await page.getByRole('button', { name: /^LingQ$/i }).click();
     // Senkronize et (anahtar boş — sunucuda LINGQ_API_KEY secret'ı var)
     await page.getByRole('button', { name: /senkronize et/i }).click();
-    // Gerçek API verisi gelir: "Doğrulanmış LingQ kart verisi" + içeri aktarılan kelime sayısı
+    // Gerçek API verisi gelir: "Doğrulanmış LingQ kart verisi" (Edge Function kart uç noktasını doğruladı)
     await expect(page.getByText(/Doğrulanmış LingQ kart verisi/i)).toBeVisible({ timeout: 60_000 });
-    await expect(page.getByText(/kelimesi içeri aktarıldı/i).first()).toBeVisible({ timeout: 10_000 });
+    // Gerçek API yolu kullanıldı (yerel veri görünümüne düşmedi)
+    await expect(page.getByText(/Gerçek API verisi/i).first()).toBeVisible({ timeout: 10_000 });
+
+    // NOT (kırılganlık düzeltmesi — 2026-10-12 otonom QA):
+    // Aktarım sayısı zamana bağlıdır. Uygulama LingQ kelimelerini, Supabase bulut
+    // senkronizasyonuyla gelen `learningItems` listesine göre tekilleştirir; bu liste
+    // asenkron yüklendiği için aynı hesapta ikinci bir senkronizasyon "yeni kelime yok"
+    // döndürebilir (tekrar kelime uydurulmaz — istenen davranış). Bu yüzden her iki
+    // doğru sonuç da kabul edilir: N kelime aktarıldı VEYA aktarılacak yeni kelime yok.
+    await expect(
+      page.getByText(/yeni durum 2.3.4 kelimesi içeri aktarıldı\.|Kart uç noktası doğrulandı; yeni veya uygun durum 2.3.4 kelimesi bulunmadı\./).first(),
+    ).toBeVisible({ timeout: 10_000 });
+
     // Anahtar tarayıcıda saklanmamalı (güvenlik: sunucu secret'ı kullanıldı)
     const stored = await page.evaluate(() => Object.keys(localStorage).filter((k) => k.toLowerCase().includes('lingq')));
     expect(stored).not.toContain('lingq_api_key');
